@@ -5,7 +5,7 @@ import {
   type Member, type InsertMember,
   type Project, type InsertProject,
   type Task, type InsertTask,
-} from "@shared/schema";
+} from "../shared/schema";
 
 export interface IStorage {
   // Members
