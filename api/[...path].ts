@@ -3,6 +3,13 @@ import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import { registerRoutes } from "../server/routes";
 
+// Disable Vercel's automatic body parsing so Express can handle it
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 const app = express();
 const httpServer = createServer(app);
 
