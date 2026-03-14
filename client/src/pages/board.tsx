@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useTeam } from "@/lib/team-context";
 import type { Task, Member, Project } from "@shared/schema";
 import { TaskCard } from "@/components/task-card";
 import { TaskDialog } from "@/components/task-dialog";
@@ -24,17 +25,18 @@ export default function Board() {
   const [filterMember, setFilterMember] = useState<string>("all");
   const [filterProject, setFilterProject] = useState<string>("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
+  const { apiBase } = useTeam();
 
-  const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
-  const { data: members = [] } = useQuery<Member[]>({ queryKey: ["/api/members"] });
-  const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
+  const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({ queryKey: [`${apiBase}/tasks`] });
+  const { data: members = [] } = useQuery<Member[]>({ queryKey: [`${apiBase}/members`] });
+  const { data: projects = [] } = useQuery<Project[]>({ queryKey: [`${apiBase}/projects`] });
 
   const updateTask = useMutation({
     mutationFn: async ({ id, ...data }: Partial<Task> & { id: string }) => {
-      const res = await apiRequest("PATCH", `/api/tasks/${id}`, data);
+      const res = await apiRequest("PATCH", `${apiBase}/tasks/${id}`, data);
       return res.json();
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/tasks"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks`] }),
   });
 
   const filteredTasks = useMemo(() => {

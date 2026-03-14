@@ -13,16 +13,19 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
+import { useTeam } from "@/lib/team-context";
 
 const navItems = [
-  { title: "Board", href: "/", icon: LayoutDashboard },
-  { title: "Team", href: "/team", icon: Users },
-  { title: "Projects", href: "/projects", icon: FolderKanban },
-  { title: "Settings", href: "/settings", icon: Settings },
+  { title: "Board", path: "", icon: LayoutDashboard },
+  { title: "Team", path: "/team", icon: Users },
+  { title: "Projects", path: "/projects", icon: FolderKanban },
+  { title: "Settings", path: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const { teamSlug } = useTeam();
+  const base = `/t/${teamSlug}`;
 
   return (
     <Sidebar>
@@ -41,19 +44,22 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    asChild
-                    data-active={location === item.href}
-                  >
-                    <Link href={item.href}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {navItems.map((item) => {
+                const href = `${base}${item.path}`;
+                return (
+                  <SidebarMenuItem key={item.path}>
+                    <SidebarMenuButton
+                      asChild
+                      data-active={location === href || (item.path === "" && location === `${base}/board`)}
+                    >
+                      <Link href={href}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

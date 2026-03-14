@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useTeam } from "@/lib/team-context";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -48,6 +49,7 @@ export function TaskDialog({
   projects: Project[];
 }) {
   const { toast } = useToast();
+  const { apiBase } = useTeam();
   const isEditing = !!task;
 
   const form = useForm<TaskFormValues>({
@@ -99,11 +101,11 @@ export function TaskDialog({
         dueDate: data.dueDate || null,
         description: data.description || null,
       };
-      const res = await apiRequest("POST", "/api/tasks", body);
+      const res = await apiRequest("POST", `${apiBase}/tasks`, body);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks`] });
       onOpenChange(false);
       toast({ title: "Task created" });
     },
@@ -118,11 +120,11 @@ export function TaskDialog({
         dueDate: data.dueDate || null,
         description: data.description || null,
       };
-      const res = await apiRequest("PATCH", `/api/tasks/${task!.id}`, body);
+      const res = await apiRequest("PATCH", `${apiBase}/tasks/${task!.id}`, body);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks`] });
       onOpenChange(false);
       toast({ title: "Task updated" });
     },
@@ -130,10 +132,10 @@ export function TaskDialog({
 
   const deleteTask = useMutation({
     mutationFn: async () => {
-      await apiRequest("DELETE", `/api/tasks/${task!.id}`);
+      await apiRequest("DELETE", `${apiBase}/tasks/${task!.id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks`] });
       onOpenChange(false);
       toast({ title: "Task deleted" });
     },

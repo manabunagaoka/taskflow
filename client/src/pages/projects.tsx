@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useTeam } from "@/lib/team-context";
 import type { Project, Task } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,17 +21,18 @@ export default function Projects() {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [name, setName] = useState("");
   const [color, setColor] = useState(PROJECT_COLORS[0]);
+  const { apiBase } = useTeam();
 
-  const { data: projects = [] } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
-  const { data: tasks = [] } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
+  const { data: projects = [] } = useQuery<Project[]>({ queryKey: [`${apiBase}/projects`] });
+  const { data: tasks = [] } = useQuery<Task[]>({ queryKey: [`${apiBase}/tasks`] });
 
   const createProject = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/projects", { name, color });
+      const res = await apiRequest("POST", `${apiBase}/projects`, { name, color });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/projects`] });
       setDialogOpen(false);
       toast({ title: "Project created" });
     },
@@ -38,11 +40,11 @@ export default function Projects() {
 
   const updateProject = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/projects/${editingProject!.id}`, { name, color });
+      const res = await apiRequest("PATCH", `${apiBase}/projects/${editingProject!.id}`, { name, color });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/projects`] });
       setDialogOpen(false);
       toast({ title: "Project updated" });
     },
@@ -50,10 +52,10 @@ export default function Projects() {
 
   const deleteProject = useMutation({
     mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/projects/${id}`);
+      await apiRequest("DELETE", `${apiBase}/projects/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/projects`] });
       toast({ title: "Project removed" });
     },
   });

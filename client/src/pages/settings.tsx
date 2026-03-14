@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useTeam } from "@/lib/team-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, Upload, Database } from "lucide-react";
@@ -9,10 +10,11 @@ import { useToast } from "@/hooks/use-toast";
 export default function Settings() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { apiBase } = useTeam();
 
   const handleExport = async () => {
     try {
-      const res = await apiRequest("GET", "/api/export");
+      const res = await apiRequest("GET", `${apiBase}/export`);
       const data = await res.json();
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -29,7 +31,7 @@ export default function Settings() {
 
   const importData = useMutation({
     mutationFn: async (data: unknown) => {
-      await apiRequest("POST", "/api/import", data);
+      await apiRequest("POST", `${apiBase}/import`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries();

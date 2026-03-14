@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useTeam } from "@/lib/team-context";
 import type { Member, Task } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,17 +27,18 @@ export default function Team() {
   const [name, setName] = useState("");
   const [role, setRole] = useState("");
   const [color, setColor] = useState(MEMBER_COLORS[0]);
+  const { apiBase } = useTeam();
 
-  const { data: members = [] } = useQuery<Member[]>({ queryKey: ["/api/members"] });
-  const { data: tasks = [] } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
+  const { data: members = [] } = useQuery<Member[]>({ queryKey: [`${apiBase}/members`] });
+  const { data: tasks = [] } = useQuery<Task[]>({ queryKey: [`${apiBase}/tasks`] });
 
   const createMember = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/members", { name, role, color });
+      const res = await apiRequest("POST", `${apiBase}/members`, { name, role, color });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/members`] });
       setDialogOpen(false);
       toast({ title: "Member added" });
     },
@@ -44,11 +46,11 @@ export default function Team() {
 
   const updateMember = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/members/${editingMember!.id}`, { name, role, color });
+      const res = await apiRequest("PATCH", `${apiBase}/members/${editingMember!.id}`, { name, role, color });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/members`] });
       setDialogOpen(false);
       toast({ title: "Member updated" });
     },
@@ -56,10 +58,10 @@ export default function Team() {
 
   const deleteMember = useMutation({
     mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/members/${id}`);
+      await apiRequest("DELETE", `${apiBase}/members/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/members"] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/members`] });
       toast({ title: "Member removed" });
     },
   });
