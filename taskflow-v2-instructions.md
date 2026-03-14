@@ -33,6 +33,142 @@ Use this document as your guide in GitHub Codespace with Copilot. Work through e
 
 ---
 
+## PHASE 0: Team Isolation (Multi-tenancy)
+
+Before any feature work, add team scoping so each team gets its own isolated workspace via a unique URL slug (e.g. `/t/acme-marketing`). No user accounts or login — **link = access**, like a shared Google Doc.
+
+### 0A. Add a `teams` table
+
+#### File: `shared/schema.ts`
+
+Add the `teams` table **before** the other table definitions:
+
+```ts
+export const teams = pgTable("teams", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(), // URL-safe identifier, e.g. "acme-marketing"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTeamSchema = createInsertSchema(teams).omit({ id: true, createdAt: true });
+export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type Team = typeof teams.$inferSelect;
+```
+
+### 0B. Add `teamId` to `members`, `projects`, and `tasks`
+
+Add this column to each of the three existing tables:
+
+```ts
+teamId: integer("team_id").notNull(),
+```
+
+### 0C. Push to database
+
+```bash
+npm run db:push
+```
+
+### 0D. Backend — Scope all queries by `teamId`
+
+#### File: `server/storage.ts`
+
+Every read/write method must accept a `teamId` parameter and filter by it:
+
+- **Reads:** Add `.where(eq(table.teamId, teamId))` to all SELECT queries
+- **Writes:** Include `teamId` in all INSERT payloads
+- **Updates/Deletes:** Add `and(eq(table.id, id), eq(table.teamId, teamId))` to ensure a team can only modify its own data
+
+Add CRUD methods for the new `teams` table:
+
+```ts
+// Teams
+async getTeamBySlug(slug: string): Promise<Team | undefined>
+async createTeam(data: InsertTeam): Promise<Team>
+```
+
+#### File: `server/routes.ts`
+
+All existing routes under `/api/*` become nested under `/api/t/:teamSlug/*`:
+
+```
+GET    /api/t/:teamSlug/members
+POST   /api/t/:teamSlug/members
+PATCH  /api/t/:teamSlug/members/:id
+DELETE /api/t/:teamSlug/members/:id
+...same pattern for projects, tasks, activity_logs, notifications, export, import
+```
+
+Each route handler starts by looking up the team:
+```ts
+const team = await storage.getTeamBySlug(req.params.teamSlug);
+if (!team) return res.status(404).json({ error: "Team not found" });
+```
+Then passes `team.id` into every storage call.
+
+Add team creation/lookup routes (no team scope needed):
+```
+POST   /api/teams          — create a new team (name → auto-generate slug)
+GET    /api/teams/:slug    — check if a team exists
+```
+
+### 0E. Frontend — Add team context
+
+#### File: `client/src/App.tsx`
+
+Update routing so all pages are under `/t/:teamSlug/`:
+```
+/                         → Landing/create-team page
+/t/:teamSlug              → Projects overview (home)
+/t/:teamSlug/board        → Kanban board
+/t/:teamSlug/team         → Team members
+/t/:teamSlug/settings     → Settings
+```
+
+#### New file: `client/src/pages/landing.tsx`
+
+Simple page with:
+- "Create a new team" form (team name input → POST /api/teams → redirect to `/t/{slug}`)
+- "Join an existing team" input (enter slug → redirect to `/t/{slug}`)
+
+#### File: `client/src/lib/queryClient.ts`
+
+Update `apiRequest` and query functions to include the team slug in all API URLs. Use a React context or URL param to access the current team slug.
+
+### 0F. Update `api/index.ts` (Vercel serverless function)
+
+Mirror all the same route changes in the Vercel serverless function:
+- Add `teams` table schema
+- Add `teamId` to all table schemas
+- Namespace all routes under `/api/t/:teamSlug/*`
+- Add team creation/lookup routes
+
+### 0G. Team Limits & Disclaimer
+
+Enforce soft caps per team to prevent abuse without adding billing complexity:
+
+**Backend limits (check count before INSERT, return 403 if exceeded):**
+- Members per team: 20
+- Projects per team: 50
+- Tasks per team: 500
+
+Limits can be raised or removed at your discretion for specific teams.
+
+**Landing page disclaimer (add below the create/join form):**
+> "TaskFlow is free to use. Workspaces may be removed after 90 days of inactivity. No guarantees of uptime or data retention. We reserve the right to modify or discontinue the service at any time."
+
+### 0H. Verification
+
+After completing Phase 0:
+1. Create a team via the landing page → get redirected to `/t/your-slug`
+2. Add members, projects, tasks — they all live under that team
+3. Create a second team → verify its workspace is completely empty
+4. Confirm the first team's data is untouched
+5. Verify limits: try adding a 21st member → should get a friendly error
+
+---
+
 ## PHASE 1: Database changes
 
 ### File: `shared/schema.ts`
