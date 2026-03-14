@@ -40,6 +40,31 @@ export async function registerRoutes(
     res.json(team);
   });
 
+  // ─── Admin (secret key protected) ───
+  app.get("/api/admin/:key/teams", async (req, res) => {
+    const adminKey = process.env.ADMIN_KEY;
+    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
+    const allTeams = await storage.getAllTeams();
+    // Enrich with counts
+    const enriched = await Promise.all(allTeams.map(async (team) => ({
+      ...team,
+      memberCount: await storage.countMembers(team.id),
+      projectCount: await storage.countProjects(team.id),
+      taskCount: await storage.countTasks(team.id),
+    })));
+    res.json(enriched);
+  });
+
+  app.delete("/api/admin/:key/teams/:id", async (req, res) => {
+    const adminKey = process.env.ADMIN_KEY;
+    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const ok = await storage.deleteTeam(id);
+    if (!ok) return res.status(404).json({ error: "Team not found" });
+    res.status(204).send();
+  });
+
   // ─── All team-scoped routes ───
   const t = "/api/t/:teamSlug";
 

@@ -103,6 +103,33 @@ app.get("/api/teams/:slug", async (req, res) => {
   res.json(team);
 });
 
+// ─── Admin (secret key protected) ───
+app.get("/api/admin/:key/teams", async (req, res) => {
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
+  const allTeams = await db.select().from(teams).orderBy(asc(teams.createdAt));
+  const enriched = await Promise.all(allTeams.map(async (team) => {
+    const [mc] = await db.select({ count: sql<number>`count(*)::int` }).from(members).where(eq(members.teamId, team.id));
+    const [pc] = await db.select({ count: sql<number>`count(*)::int` }).from(projects).where(eq(projects.teamId, team.id));
+    const [tc] = await db.select({ count: sql<number>`count(*)::int` }).from(tasks).where(eq(tasks.teamId, team.id));
+    return { ...team, memberCount: mc.count, projectCount: pc.count, taskCount: tc.count };
+  }));
+  res.json(enriched);
+});
+
+app.delete("/api/admin/:key/teams/:id", async (req, res) => {
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+  await db.delete(tasks).where(eq(tasks.teamId, id));
+  await db.delete(members).where(eq(members.teamId, id));
+  await db.delete(projects).where(eq(projects.teamId, id));
+  const [deleted] = await db.delete(teams).where(eq(teams.id, id)).returning();
+  if (!deleted) return res.status(404).json({ error: "Team not found" });
+  res.status(204).send();
+});
+
 // ─── Team-scoped routes ───
 const t = "/api/t/:teamSlug";
 

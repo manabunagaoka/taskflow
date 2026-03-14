@@ -12,6 +12,8 @@ export interface IStorage {
   // Teams
   getTeamBySlug(slug: string): Promise<Team | undefined>;
   createTeam(team: InsertTeam): Promise<Team>;
+  getAllTeams(): Promise<Team[]>;
+  deleteTeam(id: number): Promise<boolean>;
 
   // Members (team-scoped)
   getMembers(teamId: number): Promise<Member[]>;
@@ -51,6 +53,17 @@ export class DatabaseStorage implements IStorage {
   async createTeam(team: InsertTeam): Promise<Team> {
     const [created] = await db.insert(teams).values(team).returning();
     return created;
+  }
+  async getAllTeams(): Promise<Team[]> {
+    return db.select().from(teams).orderBy(asc(teams.createdAt));
+  }
+  async deleteTeam(id: number): Promise<boolean> {
+    // Delete all team data first
+    await db.delete(tasks).where(eq(tasks.teamId, id));
+    await db.delete(members).where(eq(members.teamId, id));
+    await db.delete(projects).where(eq(projects.teamId, id));
+    const result = await db.delete(teams).where(eq(teams.id, id)).returning();
+    return result.length > 0;
   }
 
   // Members

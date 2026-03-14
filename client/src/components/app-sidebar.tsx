@@ -12,7 +12,6 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
-import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { Button } from "@/components/ui/button";
 import { useTeam } from "@/lib/team-context";
 
@@ -75,7 +74,6 @@ export function AppSidebar() {
             Switch / Create Team
           </Button>
         </Link>
-        <PerplexityAttribution />
       </SidebarFooter>
     </Sidebar>
   );

@@ -15,6 +15,7 @@ import Team from "@/pages/team";
 import Projects from "@/pages/projects";
 import Settings from "@/pages/settings";
 import Landing from "@/pages/landing";
+import Admin from "@/pages/admin";
 
 function TeamLayout() {
   const sidebarStyle = {
@@ -57,6 +58,7 @@ function App() {
           <Router hook={useHashLocation}>
             <Switch>
               <Route path="/" component={Landing} />
+              <Route path="/admin/:key" component={Admin} />
               <Route path="/t/:teamSlug/:rest*" component={TeamLayout} />
               <Route path="/t/:teamSlug" component={TeamLayout} />
               <Route component={NotFound} />
