@@ -4,40 +4,46 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { Copy, Check, ArrowRight } from "lucide-react";
 
 export default function Landing() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  const [teamName, setTeamName] = useState("");
+  const [slug, setSlug] = useState("");
   const [founderName, setFounderName] = useState("");
   const [founderEmail, setFounderEmail] = useState("");
   const [joinSlug, setJoinSlug] = useState("");
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
+  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  // Generate slug from team name in real time
-  const slug = teamName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  const nameError = teamName.length > 0 && slug.length < 2
-    ? "Name must produce a valid slug (at least 2 letters/numbers)"
-    : "";
+  // Validation
+  const slugClean = slug.toLowerCase().replace(/[^a-z0-9-]/g, "").replace(/^-|-$/g, "").replace(/-{2,}/g, "-");
+  const hasInvalidChars = slug !== slugClean && slug.length > 0;
+  const tooShort = slug.length > 0 && slugClean.length < 2;
 
-  function handleNameChange(value: string) {
-    // Only allow letters, numbers, spaces, and hyphens
-    setTeamName(value.replace(/[^a-zA-Z0-9 -]/g, ""));
+  function handleSlugChange(value: string) {
+    // Auto-convert: lowercase, replace spaces with hyphens
+    const cleaned = value.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-{2,}/g, "-");
+    setSlug(cleaned);
   }
+
+  const shareUrl = typeof window !== "undefined"
+    ? `${window.location.origin}${window.location.pathname}#/t/${createdSlug}`
+    : "";
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!teamName.trim() || !founderName.trim() || slug.length < 2) return;
+    if (!slugClean || slugClean.length < 2 || !founderName.trim()) return;
     setCreating(true);
     try {
-      const slug = teamName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const res = await fetch("/api/teams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: teamName.trim(),
-          slug,
+          name: slugClean,
+          slug: slugClean,
           founderName: founderName.trim(),
           founderEmail: founderEmail.trim() || undefined,
         }),
@@ -48,7 +54,7 @@ export default function Landing() {
         return;
       }
       const team = await res.json();
-      navigate(`/t/${team.slug}`);
+      setCreatedSlug(team.slug);
     } catch {
       toast({ title: "Error", description: "Failed to create team", variant: "destructive" });
     } finally {
@@ -60,14 +66,14 @@ export default function Landing() {
     e.preventDefault();
     if (!joinSlug.trim()) return;
     setJoining(true);
-    const slug = joinSlug.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "");
+    const clean = joinSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
     try {
-      const res = await fetch(`/api/teams/${slug}`);
+      const res = await fetch(`/api/teams/${clean}`);
       if (!res.ok) {
-        toast({ title: "Team not found", description: `No team with slug "${slug}" exists.`, variant: "destructive" });
+        toast({ title: "Team not found", description: `No team called "${clean}" exists.`, variant: "destructive" });
         return;
       }
-      navigate(`/t/${slug}`);
+      navigate(`/t/${clean}`);
     } catch {
       toast({ title: "Error", description: "Failed to look up team", variant: "destructive" });
     } finally {
@@ -75,6 +81,58 @@ export default function Landing() {
     }
   }
 
+  function copyLink() {
+    navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    toast({ title: "Link copied!" });
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  // ─── Post-creation: show share link ───
+  if (createdSlug) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <div className="flex items-center justify-center gap-2.5 mb-2">
+              <svg width="36" height="36" viewBox="0 0 28 28" fill="none" aria-label="TaskFlow logo">
+                <rect width="28" height="28" rx="6" fill="currentColor" className="text-primary" />
+                <path d="M8 10h12M8 14h8M8 18h10" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="21" cy="18" r="2.5" fill="white" />
+              </svg>
+              <span className="text-2xl font-semibold tracking-tight">TaskFlow</span>
+            </div>
+            <h2 className="text-lg font-semibold">Team created!</h2>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Share this link with your team</CardTitle>
+              <CardDescription>Anyone with this link can access the workspace</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input value={shareUrl} readOnly className="font-mono text-sm" />
+                <Button variant="outline" size="icon" onClick={copyLink} title="Copy link">
+                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+              <Button className="w-full" onClick={() => navigate(`/t/${createdSlug}`)}>
+                Go to workspace
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            </CardContent>
+          </Card>
+
+          <p className="text-xs text-muted-foreground text-center">
+            Next: Add team members, create projects, and start assigning tasks.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Main landing ───
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-6">
@@ -93,26 +151,28 @@ export default function Landing() {
         <Card>
           <CardHeader>
             <CardTitle>Create a new team</CardTitle>
-            <CardDescription>Start a fresh workspace for your team</CardDescription>
+            <CardDescription>Pick a short name for your team workspace</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-3">
               <div>
                 <Input
-                  placeholder="Team name (letters, numbers, spaces only)"
-                  value={teamName}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  maxLength={40}
+                  placeholder="team-name"
+                  value={slug}
+                  onChange={(e) => handleSlugChange(e.target.value)}
+                  maxLength={30}
+                  className="font-mono"
                   required
                 />
-                {teamName.length > 0 && (
-                  <p className={`text-xs mt-1 ${nameError ? "text-destructive" : "text-muted-foreground"}`}>
-                    {nameError || <>Your team URL: <span className="font-mono font-medium text-foreground">…/t/{slug}</span> — share this with your team to join</>}
-                  </p>
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Lowercase letters, numbers, and hyphens only. This is your team ID.
+                </p>
+                {tooShort && (
+                  <p className="text-[11px] text-destructive mt-0.5">Must be at least 2 characters</p>
                 )}
               </div>
               <Input
-                placeholder="Your name (team lead)"
+                placeholder="Your name"
                 value={founderName}
                 onChange={(e) => setFounderName(e.target.value)}
                 required
@@ -123,8 +183,8 @@ export default function Landing() {
                 value={founderEmail}
                 onChange={(e) => setFounderEmail(e.target.value)}
               />
-              <Button type="submit" className="w-full" disabled={creating || !!nameError || slug.length < 2}>
-                {creating ? "..." : "Create Team"}
+              <Button type="submit" className="w-full" disabled={creating || slugClean.length < 2}>
+                {creating ? "Creating..." : "Create Team"}
               </Button>
             </form>
           </CardContent>
@@ -133,14 +193,15 @@ export default function Landing() {
         <Card>
           <CardHeader>
             <CardTitle>Join an existing team</CardTitle>
-            <CardDescription>Enter the team name or URL slug shared with you</CardDescription>
+            <CardDescription>Enter the team name shared with you</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleJoin} className="flex gap-2">
               <Input
-                placeholder="e.g. my-team"
+                placeholder="team-name"
                 value={joinSlug}
-                onChange={(e) => setJoinSlug(e.target.value.replace(/[^a-zA-Z0-9-]/g, ""))}
+                onChange={(e) => setJoinSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                className="font-mono"
                 required
               />
               <Button type="submit" variant="outline" disabled={joining}>
