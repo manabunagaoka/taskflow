@@ -15,9 +15,20 @@ export default function Landing() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
 
+  // Generate slug from team name in real time
+  const slug = teamName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const nameError = teamName.length > 0 && slug.length < 2
+    ? "Name must produce a valid slug (at least 2 letters/numbers)"
+    : "";
+
+  function handleNameChange(value: string) {
+    // Only allow letters, numbers, spaces, and hyphens
+    setTeamName(value.replace(/[^a-zA-Z0-9 -]/g, ""));
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!teamName.trim() || !founderName.trim()) return;
+    if (!teamName.trim() || !founderName.trim() || slug.length < 2) return;
     setCreating(true);
     try {
       const slug = teamName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -86,12 +97,20 @@ export default function Landing() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCreate} className="space-y-3">
-              <Input
-                placeholder="Team name"
-                value={teamName}
-                onChange={(e) => setTeamName(e.target.value)}
-                required
-              />
+              <div>
+                <Input
+                  placeholder="Team name (letters, numbers, spaces only)"
+                  value={teamName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  maxLength={40}
+                  required
+                />
+                {teamName.length > 0 && (
+                  <p className={`text-xs mt-1 ${nameError ? "text-destructive" : "text-muted-foreground"}`}>
+                    {nameError || <>Your team URL: <span className="font-mono font-medium text-foreground">…/t/{slug}</span> — share this with your team to join</>}
+                  </p>
+                )}
+              </div>
               <Input
                 placeholder="Your name (team lead)"
                 value={founderName}
@@ -104,7 +123,7 @@ export default function Landing() {
                 value={founderEmail}
                 onChange={(e) => setFounderEmail(e.target.value)}
               />
-              <Button type="submit" className="w-full" disabled={creating}>
+              <Button type="submit" className="w-full" disabled={creating || !!nameError || slug.length < 2}>
                 {creating ? "..." : "Create Team"}
               </Button>
             </form>
@@ -114,14 +133,14 @@ export default function Landing() {
         <Card>
           <CardHeader>
             <CardTitle>Join an existing team</CardTitle>
-            <CardDescription>Enter your team's slug to access their workspace</CardDescription>
+            <CardDescription>Enter the team name or URL slug shared with you</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleJoin} className="flex gap-2">
               <Input
-                placeholder="team-slug"
+                placeholder="e.g. my-team"
                 value={joinSlug}
-                onChange={(e) => setJoinSlug(e.target.value)}
+                onChange={(e) => setJoinSlug(e.target.value.replace(/[^a-zA-Z0-9-]/g, ""))}
                 required
               />
               <Button type="submit" variant="outline" disabled={joining}>
