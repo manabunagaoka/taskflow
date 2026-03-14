@@ -172,6 +172,19 @@ app.post("/api/import", async (req, res) => {
   }
 });
 
+// Debug: catch all unmatched routes
+app.use((req, res) => {
+  res.status(404).json({
+    debug: true,
+    method: req.method,
+    url: req.url,
+    originalUrl: req.originalUrl,
+    path: req.path,
+    params: req.params,
+    body: req.body,
+  });
+});
+
 export default function handler(req: any, res: any) {
   // Vercel catch-all adds query params that confuse Express routing.
   // Strip query string so Express sees clean paths like /api/members/5
