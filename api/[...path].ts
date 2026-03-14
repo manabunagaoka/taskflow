@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
-import { registerRoutes } from "../server/routes";
 
 // Disable Vercel's automatic body parsing so Express can handle it
 export const config = {
@@ -22,11 +21,30 @@ app.use(
 );
 app.use(express.urlencoded({ extended: false }));
 
+// Debug endpoint to check what's happening
+app.get("/api/health", (_req, res) => {
+  res.json({
+    ok: true,
+    hasDbUrl: !!process.env.DATABASE_URL,
+    dbUrlPrefix: process.env.DATABASE_URL?.substring(0, 20) + "...",
+    nodeEnv: process.env.NODE_ENV,
+  });
+});
+
 let initialized = false;
 
 async function init() {
   if (initialized) return;
-  await registerRoutes(httpServer, app);
+  try {
+    const { registerRoutes } = await import("../server/routes");
+    await registerRoutes(httpServer, app);
+  } catch (err: any) {
+    console.error("Init error:", err);
+    // Add a fallback error route so we can see what went wrong
+    app.use("/api/(.*)", (_req: Request, res: Response) => {
+      res.status(500).json({ error: "Server init failed", message: err.message });
+    });
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
