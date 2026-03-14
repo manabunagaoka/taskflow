@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Users, FolderKanban, Settings } from "lucide-react";
+import { LayoutDashboard, Users, FolderKanban, Settings, ArrowLeftRight } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -13,6 +13,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
+import { Button } from "@/components/ui/button";
 import { useTeam } from "@/lib/team-context";
 
 const navItems = [
@@ -24,7 +25,7 @@ const navItems = [
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const { teamSlug } = useTeam();
+  const { teamSlug, teamName } = useTeam();
   const base = `/t/${teamSlug}`;
 
   return (
@@ -36,7 +37,10 @@ export function AppSidebar() {
             <path d="M8 10h12M8 14h8M8 18h10" stroke="white" strokeWidth="2" strokeLinecap="round" />
             <circle cx="21" cy="18" r="2.5" fill="white" />
           </svg>
-          <span className="text-base font-semibold tracking-tight">TaskFlow</span>
+          <div className="min-w-0">
+            <span className="text-base font-semibold tracking-tight block">TaskFlow</span>
+            <span className="text-xs text-muted-foreground truncate block">{teamName || teamSlug}</span>
+          </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
@@ -64,7 +68,13 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-3">
+      <SidebarFooter className="p-3 space-y-2">
+        <Link href="/">
+          <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-muted-foreground">
+            <ArrowLeftRight className="h-3.5 w-3.5 mr-1.5" />
+            Switch / Create Team
+          </Button>
+        </Link>
         <PerplexityAttribution />
       </SidebarFooter>
     </Sidebar>
