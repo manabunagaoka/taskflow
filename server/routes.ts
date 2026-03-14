@@ -31,6 +31,22 @@ export async function registerRoutes(
     const existing = await storage.getTeamBySlug(slug);
     if (existing) return res.status(409).json({ error: "Team slug already taken" });
     const team = await storage.createTeam({ ...parsed.data, slug });
+    // Create founding member if provided
+    if (req.body.founderName) {
+      const member = await storage.createMember({
+        teamId: team.id,
+        name: req.body.founderName,
+        role: "Team Lead",
+        color: "#4F98A3",
+        email: req.body.founderEmail || null,
+        phone: req.body.founderPhone || null,
+        notifyEmail: req.body.founderEmail ? "on" : "off",
+        notifyPhone: req.body.founderPhone ? "on" : "off",
+      });
+      // Update team with createdBy
+      await storage.updateTeam(team.id, { createdBy: member.id });
+      return res.status(201).json({ ...team, createdBy: member.id });
+    }
     res.status(201).json(team);
   });
 
@@ -38,6 +54,17 @@ export async function registerRoutes(
     const team = await storage.getTeamBySlug(req.params.slug);
     if (!team) return res.status(404).json({ error: "Team not found" });
     res.json(team);
+  });
+
+  // Delete team (creator only)
+  app.delete("/api/t/:teamSlug", resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const memberId = parseInt(req.headers["x-member-id"] as string);
+    if (isNaN(memberId) || team.createdBy !== memberId) {
+      return res.status(403).json({ error: "Only the team creator can delete this team" });
+    }
+    await storage.deleteTeam(team.id);
+    res.status(204).send();
   });
 
   // ─── Admin (secret key protected) ───
@@ -64,7 +91,27 @@ export async function registerRoutes(
     if (!ok) return res.status(404).json({ error: "Team not found" });
     res.status(204).send();
   });
+  // Admin: get team members
+  app.get(\"/api/admin/:key/teams/:id/members\", async (req, res) => {
+    const adminKey = process.env.ADMIN_KEY;
+    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: \"Forbidden\" });
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: \"Invalid ID\" });
+    const m = await storage.getMembers(id);
+    res.json(m);
+  });
 
+  // Admin: delete member
+  app.delete(\"/api/admin/:key/teams/:teamId/members/:memberId\", async (req, res) => {
+    const adminKey = process.env.ADMIN_KEY;
+    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: \"Forbidden\" });
+    const teamId = parseInt(req.params.teamId);
+    const memberId = parseInt(req.params.memberId);
+    if (isNaN(teamId) || isNaN(memberId)) return res.status(400).json({ error: \"Invalid ID\" });
+    const ok = await storage.deleteMember(teamId, memberId);
+    if (!ok) return res.status(404).json({ error: \"Member not found\" });
+    res.status(204).send();
+  });
   // ─── All team-scoped routes ───
   const t = "/api/t/:teamSlug";
 

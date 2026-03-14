@@ -9,20 +9,27 @@ export default function Landing() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [teamName, setTeamName] = useState("");
+  const [founderName, setFounderName] = useState("");
+  const [founderEmail, setFounderEmail] = useState("");
   const [joinSlug, setJoinSlug] = useState("");
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!teamName.trim()) return;
+    if (!teamName.trim() || !founderName.trim()) return;
     setCreating(true);
     try {
       const slug = teamName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const res = await fetch("/api/teams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: teamName.trim(), slug }),
+        body: JSON.stringify({
+          name: teamName.trim(),
+          slug,
+          founderName: founderName.trim(),
+          founderEmail: founderEmail.trim() || undefined,
+        }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -78,15 +85,27 @@ export default function Landing() {
             <CardDescription>Start a fresh workspace for your team</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleCreate} className="flex gap-2">
+            <form onSubmit={handleCreate} className="space-y-3">
               <Input
                 placeholder="Team name"
                 value={teamName}
                 onChange={(e) => setTeamName(e.target.value)}
                 required
               />
-              <Button type="submit" disabled={creating}>
-                {creating ? "..." : "Create"}
+              <Input
+                placeholder="Your name (team lead)"
+                value={founderName}
+                onChange={(e) => setFounderName(e.target.value)}
+                required
+              />
+              <Input
+                placeholder="Email (optional, for notifications)"
+                type="email"
+                value={founderEmail}
+                onChange={(e) => setFounderEmail(e.target.value)}
+              />
+              <Button type="submit" className="w-full" disabled={creating}>
+                {creating ? "..." : "Create Team"}
               </Button>
             </form>
           </CardContent>

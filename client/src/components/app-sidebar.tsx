@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Users, FolderKanban, Settings, ArrowLeftRight } from "lucide-react";
+import { LayoutDashboard, Users, FolderKanban, Settings, ArrowLeftRight, Mail } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -74,6 +74,12 @@ export function AppSidebar() {
             Switch / Create Team
           </Button>
         </Link>
+        <a href="mailto:hello@manaboodle.com">
+          <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-muted-foreground">
+            <Mail className="h-3.5 w-3.5 mr-1.5" />
+            Contact Admin
+          </Button>
+        </a>
       </SidebarFooter>
     </Sidebar>
   );

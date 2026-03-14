@@ -1,16 +1,28 @@
 import { useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useTeam } from "@/lib/team-context";
+import type { Member } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Upload, Database } from "lucide-react";
+import { Download, Upload, Database, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 export default function Settings() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { apiBase } = useTeam();
+  const { apiBase, teamSlug } = useTeam();
+  const [, navigate] = useLocation();
+
+  // Fetch team info to check creator
+  const { data: teamInfo } = useQuery<{ id: number; createdBy: number | null }>({
+    queryKey: [`/api/teams/${teamSlug}`],
+  });
+
+  const { data: members = [] } = useQuery<Member[]>({
+    queryKey: [`${apiBase}/members`],
+  });
 
   const handleExport = async () => {
     try {
@@ -128,6 +140,64 @@ export default function Settings() {
             </div>
           </div>
         </Card>
+
+        {teamInfo?.createdBy && (
+          <Card className="p-5 border-destructive/30">
+            <div className="flex items-start gap-4">
+              <div className="p-2 rounded-lg bg-destructive/10">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-medium mb-1">Delete Team</h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Permanently delete this team and all its data. This action cannot be undone.
+                  Only the team creator can perform this action.
+                </p>
+                <select
+                  id="delete-as-member"
+                  className="text-sm border rounded px-2 py-1 mb-3 w-full bg-background"
+                  defaultValue=""
+                >
+                  <option value="" disabled>Select your name to confirm identity</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={async () => {
+                    const select = document.getElementById("delete-as-member") as HTMLSelectElement;
+                    const memberId = select?.value;
+                    if (!memberId) {
+                      toast({ title: "Select your name first", variant: "destructive" });
+                      return;
+                    }
+                    if (!confirm("Are you absolutely sure? This will delete the entire team and all data.")) return;
+                    try {
+                      const res = await fetch(`${apiBase}`, {
+                        method: "DELETE",
+                        headers: { "x-member-id": memberId },
+                      });
+                      if (res.status === 403) {
+                        toast({ title: "Only the team creator can delete this team", variant: "destructive" });
+                        return;
+                      }
+                      if (!res.ok) throw new Error();
+                      toast({ title: "Team deleted" });
+                      navigate("/");
+                    } catch {
+                      toast({ title: "Failed to delete team", variant: "destructive" });
+                    }
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete Team
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );

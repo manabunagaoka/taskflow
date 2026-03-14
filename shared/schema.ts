@@ -7,6 +7,7 @@ export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -22,6 +23,10 @@ export const members = pgTable("members", {
   role: text("role").notNull(),
   avatar: text("avatar"),
   color: text("color").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  notifyEmail: text("notify_email").notNull().default("off"),
+  notifyPhone: text("notify_phone").notNull().default("off"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
