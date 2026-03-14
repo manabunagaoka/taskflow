@@ -3,13 +3,14 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useTeam } from "@/lib/team-context";
+import { useParams, useLocation, Link } from "wouter";
 import type { Task, Member, Project } from "@shared/schema";
 import { TaskCard } from "@/components/task-card";
 import { TaskDialog } from "@/components/task-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Filter } from "lucide-react";
+import { Plus, Filter, ArrowLeft } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const COLUMNS = [
@@ -25,7 +26,9 @@ export default function Board() {
   const [filterMember, setFilterMember] = useState<string>("all");
   const [filterProject, setFilterProject] = useState<string>("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
-  const { apiBase } = useTeam();
+  const { apiBase, teamSlug } = useTeam();
+  const params = useParams<{ projectId?: string }>();
+  const activeProjectId = params.projectId ? parseInt(params.projectId) : null;
 
   const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({ queryKey: [`${apiBase}/tasks`] });
   const { data: members = [] } = useQuery<Member[]>({ queryKey: [`${apiBase}/members`] });
@@ -41,12 +44,13 @@ export default function Board() {
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
+      if (activeProjectId && t.projectId !== activeProjectId) return false;
       if (filterMember !== "all" && String(t.assigneeId) !== filterMember) return false;
       if (filterProject !== "all" && String(t.projectId) !== filterProject) return false;
       if (filterPriority !== "all" && t.priority !== filterPriority) return false;
       return true;
     });
-  }, [tasks, filterMember, filterProject, filterPriority]);
+  }, [tasks, activeProjectId, filterMember, filterProject, filterPriority]);
 
   const columnTasks = useMemo(() => {
     const grouped: Record<string, Task[]> = {};
@@ -104,13 +108,27 @@ export default function Board() {
   };
 
   const activeFilters = [filterMember, filterProject, filterPriority].filter((f) => f !== "all").length;
+  const activeProject = activeProjectId ? projects.find(p => p.id === activeProjectId) : null;
 
   return (
     <div className="flex flex-col h-full">
       {/* Header bar */}
       <div className="flex items-center justify-between gap-3 px-6 py-3 border-b flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
-          <Filter className="h-4 w-4 text-muted-foreground" />
+          {activeProject ? (
+            <>
+              <Link href={`/t/${teamSlug}`} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <ArrowLeft className="h-4 w-4" />
+                Projects
+              </Link>
+              <span className="text-sm font-semibold">{activeProject.name}</span>
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: activeProject.color }} />
+            </>
+          ) : (
+            <>
+              <Filter className="h-4 w-4 text-muted-foreground" />
+            </>
+          )}
           <Select value={filterMember} onValueChange={setFilterMember}>
             <SelectTrigger className="w-[150px] h-8 text-sm" data-testid="select-filter-member">
               <SelectValue placeholder="All Members" />
@@ -122,17 +140,19 @@ export default function Board() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={filterProject} onValueChange={setFilterProject}>
-            <SelectTrigger className="w-[160px] h-8 text-sm" data-testid="select-filter-project">
-              <SelectValue placeholder="All Projects" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Projects</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {!activeProjectId && (
+            <Select value={filterProject} onValueChange={setFilterProject}>
+              <SelectTrigger className="w-[160px] h-8 text-sm" data-testid="select-filter-project">
+                <SelectValue placeholder="All Projects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Projects</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Select value={filterPriority} onValueChange={setFilterPriority}>
             <SelectTrigger className="w-[130px] h-8 text-sm" data-testid="select-filter-priority">
               <SelectValue placeholder="All Priorities" />

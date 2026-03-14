@@ -23,6 +23,7 @@ export const members = pgTable("members", {
   role: text("role").notNull(),
   avatar: text("avatar"),
   color: text("color").notNull(),
+  type: text("type").notNull().default("person"), // "person" or "agent"
   email: text("email"),
   phone: text("phone"),
   notifyEmail: text("notify_email").notNull().default("off"),
@@ -66,3 +67,35 @@ export const tasks = pgTable("tasks", {
 export const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, createdAt: true });
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type Task = typeof tasks.$inferSelect;
+
+// Activity Logs
+export const activityLogs = pgTable("activity_logs", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  taskId: integer("task_id").notNull(),
+  authorName: text("author_name").notNull(),
+  type: text("type").notNull(), // "comment" or "change"
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
+export type InsertActivityLog = z.infer<typeof insertActivityLogSchema>;
+export type ActivityLog = typeof activityLogs.$inferSelect;
+
+// Notifications
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  recipientName: text("recipient_name").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  taskId: integer("task_id"),
+  projectId: integer("project_id"),
+  read: text("read").notNull().default("false"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;

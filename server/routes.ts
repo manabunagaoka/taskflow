@@ -1,7 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, logTaskChange } from "./storage";
 import { insertMemberSchema, insertProjectSchema, insertTaskSchema, insertTeamSchema } from "../shared/schema";
+import XLSX from "xlsx";
 
 // Team limits
 const LIMITS = { members: 20, projects: 50, tasks: 500 };
@@ -92,24 +93,24 @@ export async function registerRoutes(
     res.status(204).send();
   });
   // Admin: get team members
-  app.get(\"/api/admin/:key/teams/:id/members\", async (req, res) => {
+  app.get("/api/admin/:key/teams/:id/members", async (req, res) => {
     const adminKey = process.env.ADMIN_KEY;
-    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: \"Forbidden\" });
+    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
     const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ error: \"Invalid ID\" });
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const m = await storage.getMembers(id);
     res.json(m);
   });
 
   // Admin: delete member
-  app.delete(\"/api/admin/:key/teams/:teamId/members/:memberId\", async (req, res) => {
+  app.delete("/api/admin/:key/teams/:teamId/members/:memberId", async (req, res) => {
     const adminKey = process.env.ADMIN_KEY;
-    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: \"Forbidden\" });
+    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
     const teamId = parseInt(req.params.teamId);
     const memberId = parseInt(req.params.memberId);
-    if (isNaN(teamId) || isNaN(memberId)) return res.status(400).json({ error: \"Invalid ID\" });
+    if (isNaN(teamId) || isNaN(memberId)) return res.status(400).json({ error: "Invalid ID" });
     const ok = await storage.deleteMember(teamId, memberId);
-    if (!ok) return res.status(404).json({ error: \"Member not found\" });
+    if (!ok) return res.status(404).json({ error: "Member not found" });
     res.status(204).send();
   });
   // ─── All team-scoped routes ───
@@ -206,8 +207,58 @@ export async function registerRoutes(
     const team = (req as any).team;
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+    const oldTask = await storage.getTask(team.id, id);
+    if (!oldTask) return res.status(404).json({ error: "Task not found" });
+
     const updated = await storage.updateTask(team.id, id, req.body);
     if (!updated) return res.status(404).json({ error: "Task not found" });
+
+    const authorName = req.body.changedBy || "Someone";
+
+    if (req.body.status && req.body.status !== oldTask.status) {
+      await logTaskChange(storage, team.id, id, authorName, `Status changed from "${oldTask.status}" to "${req.body.status}"`);
+
+      if (req.body.status === "done" && oldTask.assigneeId) {
+        const assignee = await storage.getMember(team.id, oldTask.assigneeId);
+        if (assignee) {
+          await storage.createNotification({
+            teamId: team.id,
+            recipientName: assignee.name,
+            title: "Task completed",
+            message: `"${oldTask.title}" has been marked as done`,
+            taskId: id,
+            projectId: oldTask.projectId,
+            read: "false",
+          });
+        }
+      }
+    }
+
+    if (req.body.assigneeId && req.body.assigneeId !== oldTask.assigneeId) {
+      const newAssignee = await storage.getMember(team.id, req.body.assigneeId);
+      if (newAssignee) {
+        await logTaskChange(storage, team.id, id, authorName, `Assigned to ${newAssignee.name}`);
+        await storage.createNotification({
+          teamId: team.id,
+          recipientName: newAssignee.name,
+          title: "You were assigned a task",
+          message: `You've been assigned to "${oldTask.title}"`,
+          taskId: id,
+          projectId: oldTask.projectId,
+          read: "false",
+        });
+      }
+    }
+
+    if (req.body.priority && req.body.priority !== oldTask.priority) {
+      await logTaskChange(storage, team.id, id, authorName, `Priority changed from "${oldTask.priority}" to "${req.body.priority}"`);
+    }
+
+    if (req.body.progress !== undefined && req.body.progress !== oldTask.progress) {
+      await logTaskChange(storage, team.id, id, authorName, `Progress updated to ${req.body.progress}%`);
+    }
+
     res.json(updated);
   });
 
@@ -231,6 +282,230 @@ export async function registerRoutes(
     const team = (req as any).team;
     try {
       await storage.importData(team.id, req.body);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  // ─── Activity Logs ───
+  app.get(`${t}/tasks/:id/activity`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const logs = await storage.getActivityLogs(team.id, id);
+    res.json(logs);
+  });
+
+  app.post(`${t}/tasks/:id/activity`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const taskId = parseInt(req.params.id);
+    if (isNaN(taskId)) return res.status(400).json({ error: "Invalid ID" });
+    const { authorName, content } = req.body;
+    if (!authorName || !content) return res.status(400).json({ error: "authorName and content required" });
+
+    const log = await storage.createActivityLog({
+      teamId: team.id,
+      taskId,
+      authorName,
+      type: "comment",
+      content,
+    });
+
+    // Check for @mentions and create notifications
+    const mentions = content.match(/@(\w+(?:\s\w+)?)/g);
+    if (mentions) {
+      const allMembers = await storage.getMembers(team.id);
+      for (const mention of mentions) {
+        const mentionedName = mention.replace("@", "").trim();
+        const member = allMembers.find((m: any) =>
+          m.name.toLowerCase().startsWith(mentionedName.toLowerCase())
+        );
+        if (member) {
+          const task = await storage.getTask(team.id, taskId);
+          await storage.createNotification({
+            teamId: team.id,
+            recipientName: member.name,
+            title: "You were mentioned in a comment",
+            message: `${authorName} mentioned you on "${task?.title}": "${content}"`,
+            taskId,
+            projectId: task?.projectId || null,
+            read: "false",
+          });
+        }
+      }
+    }
+
+    res.status(201).json(log);
+  });
+
+  // ─── Notifications ───
+  app.get(`${t}/notifications/:name`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const n = await storage.getNotifications(team.id, req.params.name);
+    res.json(n);
+  });
+
+  app.patch(`${t}/notifications/:id/read`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    await storage.markNotificationRead(team.id, id);
+    res.json({ success: true });
+  });
+
+  app.post(`${t}/notifications/mark-all-read`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const { recipientName } = req.body;
+    if (!recipientName) return res.status(400).json({ error: "recipientName required" });
+    await storage.markAllNotificationsRead(team.id, recipientName);
+    res.json({ success: true });
+  });
+
+  // ─── Excel Export ───
+  app.get(`${t}/export/excel`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const [allMembers, allProjects, allTasks] = await Promise.all([
+      storage.getMembers(team.id),
+      storage.getProjects(team.id),
+      storage.getTasks(team.id),
+    ]);
+
+    const taskRows = allTasks.map((t: any) => ({
+      "Task": t.title,
+      "Description": t.description || "",
+      "Project": allProjects.find((p: any) => p.id === t.projectId)?.name || "",
+      "Assignee": allMembers.find((m: any) => m.id === t.assigneeId)?.name || "",
+      "Status": t.status,
+      "Priority": t.priority,
+      "Progress (%)": t.progress,
+      "Due Date": t.dueDate || "",
+    }));
+
+    const memberRows = allMembers.map((m: any) => ({
+      "Name": m.name,
+      "Role": m.role,
+      "Type": m.type || "person",
+    }));
+
+    const projectRows = allProjects.map((p: any) => ({
+      "Project Name": p.name,
+      "Color": p.color,
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(taskRows.length ? taskRows : [{}]), "Tasks");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memberRows.length ? memberRows : [{}]), "Team");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(projectRows.length ? projectRows : [{}]), "Projects");
+
+    const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    res.setHeader("Content-Disposition", "attachment; filename=taskflow-export.xlsx");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.send(buf);
+  });
+
+  // ─── Excel Import ───
+  app.post(`${t}/import/excel`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    try {
+      const { data } = req.body;
+      if (!data) return res.status(400).json({ error: "No data provided" });
+
+      const buf = Buffer.from(data, "base64");
+      const wb = XLSX.read(buf, { type: "buffer" });
+
+      const teamSheet = wb.Sheets["Team"];
+      const projectSheet = wb.Sheets["Projects"];
+      const taskSheet = wb.Sheets["Tasks"];
+
+      if (teamSheet) {
+        const teamRows = XLSX.utils.sheet_to_json<any>(teamSheet);
+        const existingMembers = await storage.getMembers(team.id);
+        for (const row of teamRows) {
+          if (!row["Name"]) continue;
+          const exists = existingMembers.find((m: any) => m.name.toLowerCase() === row["Name"].toLowerCase());
+          if (!exists) {
+            const colors = ["#4F98A3", "#A84B2F", "#437A22", "#7A39BB", "#006494", "#964219"];
+            await storage.createMember({
+              teamId: team.id,
+              name: row["Name"],
+              role: row["Role"] || "Team Member",
+              color: colors[Math.floor(Math.random() * colors.length)],
+              type: row["Type"] || "person",
+            });
+          }
+        }
+      }
+
+      if (projectSheet) {
+        const projectRows = XLSX.utils.sheet_to_json<any>(projectSheet);
+        const existingProjects = await storage.getProjects(team.id);
+        for (const row of projectRows) {
+          if (!row["Project Name"]) continue;
+          const exists = existingProjects.find((p: any) => p.name.toLowerCase() === row["Project Name"].toLowerCase());
+          if (!exists) {
+            await storage.createProject({
+              teamId: team.id,
+              name: row["Project Name"],
+              color: row["Color"] || "#4F98A3",
+            });
+          }
+        }
+      }
+
+      if (taskSheet) {
+        const taskRows = XLSX.utils.sheet_to_json<any>(taskSheet);
+        const allMembers = await storage.getMembers(team.id);
+        const allProjects = await storage.getProjects(team.id);
+
+        for (const row of taskRows) {
+          if (!row["Task"]) continue;
+
+          const assignee = row["Assignee"]
+            ? allMembers.find((m: any) => m.name.toLowerCase() === row["Assignee"].toLowerCase())
+            : null;
+          const project = row["Project"]
+            ? allProjects.find((p: any) => p.name.toLowerCase() === row["Project"].toLowerCase())
+            : null;
+
+          let projectId = project?.id || null;
+          if (row["Project"] && !project) {
+            const newProj = await storage.createProject({
+              teamId: team.id,
+              name: row["Project"],
+              color: "#4F98A3",
+            });
+            projectId = newProj.id;
+          }
+
+          let assigneeId = assignee?.id || null;
+          if (row["Assignee"] && !assignee) {
+            const colors = ["#4F98A3", "#A84B2F", "#437A22", "#7A39BB"];
+            const newMember = await storage.createMember({
+              teamId: team.id,
+              name: row["Assignee"],
+              role: "Team Member",
+              color: colors[Math.floor(Math.random() * colors.length)],
+              type: "person",
+            });
+            assigneeId = newMember.id;
+          }
+
+          await storage.createTask({
+            teamId: team.id,
+            title: row["Task"],
+            description: row["Description"] || null,
+            status: row["Status"] || "todo",
+            priority: row["Priority"] || "medium",
+            progress: row["Progress (%)"] || 0,
+            assigneeId,
+            projectId,
+            dueDate: row["Due Date"] || null,
+            order: 0,
+          });
+        }
+      }
+
       res.json({ success: true });
     } catch (e: any) {
       res.status(400).json({ error: e.message });

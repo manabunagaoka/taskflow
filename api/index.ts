@@ -4,7 +4,8 @@ import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { eq, asc, and, sql } from "drizzle-orm";
+import { eq, asc, desc, and, sql } from "drizzle-orm";
+import XLSX from "xlsx";
 
 export const config = {
   api: { bodyParser: false },
@@ -26,6 +27,7 @@ const members = pgTable("members", {
   role: text("role").notNull(),
   avatar: text("avatar"),
   color: text("color").notNull(),
+  type: text("type").notNull().default("person"),
   email: text("email"),
   phone: text("phone"),
   notifyEmail: text("notify_email").notNull().default("off"),
@@ -56,12 +58,36 @@ const tasks = pgTable("tasks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+const activityLogs = pgTable("activity_logs", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  taskId: integer("task_id").notNull(),
+  authorName: text("author_name").notNull(),
+  type: text("type").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  recipientName: text("recipient_name").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  taskId: integer("task_id"),
+  projectId: integer("project_id"),
+  read: text("read").notNull().default("false"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 const insertTeamSchema = createInsertSchema(teams).omit({ id: true, createdAt: true });
 const insertMemberSchema = createInsertSchema(members).omit({ id: true, createdAt: true });
 const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true });
 const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, createdAt: true });
+const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
+const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 
-const schema = { teams, members, projects, tasks };
+const schema = { teams, members, projects, tasks, activityLogs, notifications };
 
 // ─── Database ───
 const pool = new pg.Pool({
@@ -129,6 +155,8 @@ app.delete("/api/t/:teamSlug", resolveTeam, async (req, res) => {
   if (isNaN(memberId) || team.createdBy !== memberId) {
     return res.status(403).json({ error: "Only the team creator can delete this team" });
   }
+  await db.delete(activityLogs).where(eq(activityLogs.teamId, team.id));
+  await db.delete(notifications).where(eq(notifications.teamId, team.id));
   await db.delete(tasks).where(eq(tasks.teamId, team.id));
   await db.delete(members).where(eq(members.teamId, team.id));
   await db.delete(projects).where(eq(projects.teamId, team.id));
@@ -155,6 +183,8 @@ app.delete("/api/admin/:key/teams/:id", async (req, res) => {
   if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+  await db.delete(activityLogs).where(eq(activityLogs.teamId, id));
+  await db.delete(notifications).where(eq(notifications.teamId, id));
   await db.delete(tasks).where(eq(tasks.teamId, id));
   await db.delete(members).where(eq(members.teamId, id));
   await db.delete(projects).where(eq(projects.teamId, id));
@@ -279,8 +309,41 @@ app.patch(`${t}/tasks/:id`, resolveTeam, async (req, res) => {
   const team = (req as any).team;
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+
+  const [oldTask] = await db.select().from(tasks).where(and(eq(tasks.id, id), eq(tasks.teamId, team.id)));
+  if (!oldTask) return res.status(404).json({ error: "Not found" });
+
   const [updated] = await db.update(tasks).set(req.body).where(and(eq(tasks.id, id), eq(tasks.teamId, team.id))).returning();
   if (!updated) return res.status(404).json({ error: "Not found" });
+
+  const authorName = req.body.changedBy || "Someone";
+
+  if (req.body.status && req.body.status !== oldTask.status) {
+    await db.insert(activityLogs).values({ teamId: team.id, taskId: id, authorName, type: "change", content: `Status changed from "${oldTask.status}" to "${req.body.status}"` });
+    if (req.body.status === "done" && oldTask.assigneeId) {
+      const [assignee] = await db.select().from(members).where(and(eq(members.id, oldTask.assigneeId), eq(members.teamId, team.id)));
+      if (assignee) {
+        await db.insert(notifications).values({ teamId: team.id, recipientName: assignee.name, title: "Task completed", message: `"${oldTask.title}" has been marked as done`, taskId: id, projectId: oldTask.projectId, read: "false" });
+      }
+    }
+  }
+
+  if (req.body.assigneeId && req.body.assigneeId !== oldTask.assigneeId) {
+    const [newAssignee] = await db.select().from(members).where(and(eq(members.id, req.body.assigneeId), eq(members.teamId, team.id)));
+    if (newAssignee) {
+      await db.insert(activityLogs).values({ teamId: team.id, taskId: id, authorName, type: "change", content: `Assigned to ${newAssignee.name}` });
+      await db.insert(notifications).values({ teamId: team.id, recipientName: newAssignee.name, title: "You were assigned a task", message: `You've been assigned to "${oldTask.title}"`, taskId: id, projectId: oldTask.projectId, read: "false" });
+    }
+  }
+
+  if (req.body.priority && req.body.priority !== oldTask.priority) {
+    await db.insert(activityLogs).values({ teamId: team.id, taskId: id, authorName, type: "change", content: `Priority changed from "${oldTask.priority}" to "${req.body.priority}"` });
+  }
+
+  if (req.body.progress !== undefined && req.body.progress !== oldTask.progress) {
+    await db.insert(activityLogs).values({ teamId: team.id, taskId: id, authorName, type: "change", content: `Progress updated to ${req.body.progress}%` });
+  }
+
   res.json(updated);
 });
 
@@ -315,6 +378,179 @@ app.post(`${t}/import`, resolveTeam, async (req, res) => {
     if (mData) for (const m of mData) await db.insert(members).values({ teamId: team.id, name: m.name, role: m.role, color: m.color, avatar: m.avatar || null });
     if (pData) for (const p of pData) await db.insert(projects).values({ teamId: team.id, name: p.name, color: p.color });
     if (tData) for (const t of tData) await db.insert(tasks).values({ teamId: team.id, title: t.title, description: t.description || null, status: t.status || "todo", priority: t.priority || "medium", progress: t.progress || 0, assigneeId: null, projectId: null, dueDate: t.dueDate || null, order: t.order || 0 });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// ─── Activity Logs ───
+app.get(`${t}/tasks/:id/activity`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+  const logs = await db.select().from(activityLogs).where(and(eq(activityLogs.teamId, team.id), eq(activityLogs.taskId, id))).orderBy(desc(activityLogs.createdAt));
+  res.json(logs);
+});
+
+app.post(`${t}/tasks/:id/activity`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const taskId = parseInt(req.params.id);
+  if (isNaN(taskId)) return res.status(400).json({ error: "Invalid ID" });
+  const { authorName, content } = req.body;
+  if (!authorName || !content) return res.status(400).json({ error: "authorName and content required" });
+
+  const [log] = await db.insert(activityLogs).values({ teamId: team.id, taskId, authorName, type: "comment", content }).returning();
+
+  // Check for @mentions and create notifications
+  const mentions = content.match(/@(\w+(?:\s\w+)?)/g);
+  if (mentions) {
+    const allMembers = await db.select().from(members).where(eq(members.teamId, team.id));
+    for (const mention of mentions) {
+      const mentionedName = mention.replace("@", "").trim();
+      const member = allMembers.find((m: any) => m.name.toLowerCase().startsWith(mentionedName.toLowerCase()));
+      if (member) {
+        const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.teamId, team.id)));
+        await db.insert(notifications).values({ teamId: team.id, recipientName: member.name, title: "You were mentioned in a comment", message: `${authorName} mentioned you on "${task?.title}": "${content}"`, taskId, projectId: task?.projectId || null, read: "false" });
+      }
+    }
+  }
+
+  res.status(201).json(log);
+});
+
+// ─── Notifications ───
+app.get(`${t}/notifications/:name`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const n = await db.select().from(notifications).where(and(eq(notifications.teamId, team.id), eq(notifications.recipientName, req.params.name))).orderBy(desc(notifications.createdAt));
+  res.json(n);
+});
+
+app.patch(`${t}/notifications/:id/read`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+  await db.update(notifications).set({ read: "true" }).where(and(eq(notifications.id, id), eq(notifications.teamId, team.id)));
+  res.json({ success: true });
+});
+
+app.post(`${t}/notifications/mark-all-read`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const { recipientName } = req.body;
+  if (!recipientName) return res.status(400).json({ error: "recipientName required" });
+  await db.update(notifications).set({ read: "true" }).where(and(eq(notifications.teamId, team.id), eq(notifications.recipientName, recipientName)));
+  res.json({ success: true });
+});
+
+// ─── Excel Export ───
+app.get(`${t}/export/excel`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const [allMembers, allProjects, allTasks] = await Promise.all([
+    db.select().from(members).where(eq(members.teamId, team.id)),
+    db.select().from(projects).where(eq(projects.teamId, team.id)),
+    db.select().from(tasks).where(eq(tasks.teamId, team.id)),
+  ]);
+
+  const taskRows = allTasks.map((t: any) => ({
+    "Task": t.title,
+    "Description": t.description || "",
+    "Project": allProjects.find((p: any) => p.id === t.projectId)?.name || "",
+    "Assignee": allMembers.find((m: any) => m.id === t.assigneeId)?.name || "",
+    "Status": t.status,
+    "Priority": t.priority,
+    "Progress (%)": t.progress,
+    "Due Date": t.dueDate || "",
+  }));
+
+  const memberRows = allMembers.map((m: any) => ({
+    "Name": m.name,
+    "Role": m.role,
+    "Type": m.type || "person",
+  }));
+
+  const projectRows = allProjects.map((p: any) => ({
+    "Project Name": p.name,
+    "Color": p.color,
+  }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(taskRows.length ? taskRows : [{}]), "Tasks");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memberRows.length ? memberRows : [{}]), "Team");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(projectRows.length ? projectRows : [{}]), "Projects");
+
+  const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  res.setHeader("Content-Disposition", "attachment; filename=taskflow-export.xlsx");
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.send(buf);
+});
+
+// ─── Excel Import ───
+app.post(`${t}/import/excel`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  try {
+    const { data } = req.body;
+    if (!data) return res.status(400).json({ error: "No data provided" });
+
+    const buf = Buffer.from(data, "base64");
+    const wb = XLSX.read(buf, { type: "buffer" });
+
+    const teamSheet = wb.Sheets["Team"];
+    const projectSheet = wb.Sheets["Projects"];
+    const taskSheet = wb.Sheets["Tasks"];
+
+    if (teamSheet) {
+      const teamRows = XLSX.utils.sheet_to_json<any>(teamSheet);
+      const existingMembers = await db.select().from(members).where(eq(members.teamId, team.id));
+      for (const row of teamRows) {
+        if (!row["Name"]) continue;
+        const exists = existingMembers.find((m: any) => m.name.toLowerCase() === row["Name"].toLowerCase());
+        if (!exists) {
+          const colors = ["#4F98A3", "#A84B2F", "#437A22", "#7A39BB", "#006494", "#964219"];
+          await db.insert(members).values({ teamId: team.id, name: row["Name"], role: row["Role"] || "Team Member", color: colors[Math.floor(Math.random() * colors.length)], type: row["Type"] || "person" });
+        }
+      }
+    }
+
+    if (projectSheet) {
+      const projectRows = XLSX.utils.sheet_to_json<any>(projectSheet);
+      const existingProjects = await db.select().from(projects).where(eq(projects.teamId, team.id));
+      for (const row of projectRows) {
+        if (!row["Project Name"]) continue;
+        const exists = existingProjects.find((p: any) => p.name.toLowerCase() === row["Project Name"].toLowerCase());
+        if (!exists) {
+          await db.insert(projects).values({ teamId: team.id, name: row["Project Name"], color: row["Color"] || "#4F98A3" });
+        }
+      }
+    }
+
+    if (taskSheet) {
+      const taskRows = XLSX.utils.sheet_to_json<any>(taskSheet);
+      const allMembers = await db.select().from(members).where(eq(members.teamId, team.id));
+      const allProjects = await db.select().from(projects).where(eq(projects.teamId, team.id));
+
+      for (const row of taskRows) {
+        if (!row["Task"]) continue;
+
+        const assignee = row["Assignee"] ? allMembers.find((m: any) => m.name.toLowerCase() === row["Assignee"].toLowerCase()) : null;
+        const project = row["Project"] ? allProjects.find((p: any) => p.name.toLowerCase() === row["Project"].toLowerCase()) : null;
+
+        let projectId = project?.id || null;
+        if (row["Project"] && !project) {
+          const [newProj] = await db.insert(projects).values({ teamId: team.id, name: row["Project"], color: "#4F98A3" }).returning();
+          projectId = newProj.id;
+        }
+
+        let assigneeId = assignee?.id || null;
+        if (row["Assignee"] && !assignee) {
+          const colors = ["#4F98A3", "#A84B2F", "#437A22", "#7A39BB"];
+          const [newMember] = await db.insert(members).values({ teamId: team.id, name: row["Assignee"], role: "Team Member", color: colors[Math.floor(Math.random() * colors.length)], type: "person" }).returning();
+          assigneeId = newMember.id;
+        }
+
+        await db.insert(tasks).values({ teamId: team.id, title: row["Task"], description: row["Description"] || null, status: row["Status"] || "todo", priority: row["Priority"] || "medium", progress: row["Progress (%)"] || 0, assigneeId, projectId, dueDate: row["Due Date"] || null, order: 0 });
+      }
+    }
+
     res.json({ success: true });
   } catch (e: any) {
     res.status(400).json({ error: e.message });

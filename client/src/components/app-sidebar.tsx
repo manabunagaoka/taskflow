@@ -16,9 +16,9 @@ import { Button } from "@/components/ui/button";
 import { useTeam } from "@/lib/team-context";
 
 const navItems = [
-  { title: "Board", path: "", icon: LayoutDashboard },
+  { title: "Projects", path: "", icon: FolderKanban },
+  { title: "Board", path: "/board", icon: LayoutDashboard },
   { title: "Team", path: "/team", icon: Users },
-  { title: "Projects", path: "/projects", icon: FolderKanban },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 

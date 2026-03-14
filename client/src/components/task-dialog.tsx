@@ -1,7 +1,8 @@
-import { useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useEffect, useState, useRef } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useTeam } from "@/lib/team-context";
+import { useCurrentUser } from "@/context/user-context";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -19,8 +20,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2 } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Trash2, Send, MessageSquare, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { formatDistanceToNow } from "date-fns";
 
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -50,7 +53,12 @@ export function TaskDialog({
 }) {
   const { toast } = useToast();
   const { apiBase } = useTeam();
+  const { currentUser } = useCurrentUser();
   const isEditing = !!task;
+  const [comment, setComment] = useState("");
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState("");
+  const commentRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<TaskFormValues>({
     resolver: zodResolver(taskFormSchema),
@@ -90,7 +98,14 @@ export function TaskDialog({
         dueDate: "",
       });
     }
+    setComment("");
   }, [task, open]);
+
+  // Activity log query
+  const { data: activityLogs = [] } = useQuery<any[]>({
+    queryKey: [`${apiBase}/tasks/${task?.id}/activity`],
+    enabled: !!task,
+  });
 
   const createTask = useMutation({
     mutationFn: async (data: TaskFormValues) => {
@@ -119,12 +134,14 @@ export function TaskDialog({
         projectId: data.projectId ? parseInt(data.projectId) : null,
         dueDate: data.dueDate || null,
         description: data.description || null,
+        changedBy: currentUser || "Someone",
       };
       const res = await apiRequest("PATCH", `${apiBase}/tasks/${task!.id}`, body);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks`] });
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks/${task?.id}/activity`] });
       onOpenChange(false);
       toast({ title: "Task updated" });
     },
@@ -141,6 +158,20 @@ export function TaskDialog({
     },
   });
 
+  const addComment = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `${apiBase}/tasks/${task!.id}/activity`, {
+        authorName: currentUser || "Anonymous",
+        content: comment,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks/${task?.id}/activity`] });
+      setComment("");
+    },
+  });
+
   const onSubmit = (data: TaskFormValues) => {
     if (isEditing) {
       updateTask.mutate(data);
@@ -149,11 +180,41 @@ export function TaskDialog({
     }
   };
 
+  const handleCommentChange = (value: string) => {
+    setComment(value);
+    const lastAt = value.lastIndexOf("@");
+    if (lastAt !== -1 && lastAt === value.length - 1) {
+      setShowMentions(true);
+      setMentionFilter("");
+    } else if (lastAt !== -1) {
+      const afterAt = value.slice(lastAt + 1);
+      if (!afterAt.includes(" ") || afterAt.split(" ").length <= 2) {
+        setShowMentions(true);
+        setMentionFilter(afterAt);
+      } else {
+        setShowMentions(false);
+      }
+    } else {
+      setShowMentions(false);
+    }
+  };
+
+  const insertMention = (memberName: string) => {
+    const lastAt = comment.lastIndexOf("@");
+    setComment(comment.slice(0, lastAt) + `@${memberName} `);
+    setShowMentions(false);
+    commentRef.current?.focus();
+  };
+
+  const filteredMembers = members.filter(m =>
+    m.name.toLowerCase().includes(mentionFilter.toLowerCase())
+  );
+
   const progress = form.watch("progress");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit Task" : "New Task"}</DialogTitle>
         </DialogHeader>
@@ -268,6 +329,78 @@ export function TaskDialog({
               data-testid="slider-task-progress"
             />
           </div>
+
+          {/* Activity section (only for editing) */}
+          {isEditing && (
+            <div className="border-t pt-4 space-y-3">
+              <Label className="text-sm font-semibold">Activity</Label>
+              <ScrollArea className="h-[200px] rounded-md border p-3">
+                {activityLogs.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">No activity yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {activityLogs.map((log: any) => (
+                      <div key={log.id} className="flex gap-2 text-xs">
+                        <span className="shrink-0 mt-0.5">
+                          {log.type === "comment" ? <MessageSquare className="h-3.5 w-3.5 text-blue-500" /> : <RefreshCw className="h-3.5 w-3.5 text-muted-foreground" />}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="break-words">{log.content}</p>
+                          <p className="text-muted-foreground mt-0.5">
+                            by {log.authorName} · {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+
+              {/* Comment input */}
+              <div className="relative">
+                <div className="flex gap-2">
+                  <Input
+                    ref={commentRef}
+                    value={comment}
+                    onChange={(e) => handleCommentChange(e.target.value)}
+                    placeholder={`Add a comment... (type @ to mention)`}
+                    className="flex-1 text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey && comment.trim()) {
+                        e.preventDefault();
+                        addComment.mutate();
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => comment.trim() && addComment.mutate()}
+                    disabled={!comment.trim() || addComment.isPending}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                {/* @mention dropdown */}
+                {showMentions && filteredMembers.length > 0 && (
+                  <div className="absolute bottom-full mb-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
+                    {filteredMembers.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+                        onClick={() => insertMention(m.name)}
+                      >
+                        {m.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <DialogFooter className="gap-2">
             {isEditing && (

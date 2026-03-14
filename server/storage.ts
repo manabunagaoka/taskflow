@@ -1,11 +1,13 @@
-import { eq, asc, and, sql } from "drizzle-orm";
+import { eq, asc, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  teams, members, projects, tasks,
+  teams, members, projects, tasks, activityLogs, notifications,
   type Team, type InsertTeam,
   type Member, type InsertMember,
   type Project, type InsertProject,
   type Task, type InsertTask,
+  type ActivityLog, type InsertActivityLog,
+  type Notification, type InsertNotification,
 } from "../shared/schema";
 
 export interface IStorage {
@@ -43,6 +45,16 @@ export interface IStorage {
   // Bulk ops (team-scoped)
   exportData(teamId: number): Promise<{ members: Member[]; projects: Project[]; tasks: Task[] }>;
   importData(teamId: number, data: { members: any[]; projects: any[]; tasks: any[] }): Promise<void>;
+
+  // Activity Logs (team-scoped)
+  getActivityLogs(teamId: number, taskId: number): Promise<ActivityLog[]>;
+  createActivityLog(log: InsertActivityLog): Promise<ActivityLog>;
+
+  // Notifications (team-scoped)
+  getNotifications(teamId: number, recipientName: string): Promise<Notification[]>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationRead(teamId: number, id: number): Promise<void>;
+  markAllNotificationsRead(teamId: number, recipientName: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -64,6 +76,8 @@ export class DatabaseStorage implements IStorage {
   }
   async deleteTeam(id: number): Promise<boolean> {
     // Delete all team data first
+    await db.delete(activityLogs).where(eq(activityLogs.teamId, id));
+    await db.delete(notifications).where(eq(notifications.teamId, id));
     await db.delete(tasks).where(eq(tasks.teamId, id));
     await db.delete(members).where(eq(members.teamId, id));
     await db.delete(projects).where(eq(projects.teamId, id));
@@ -199,6 +213,52 @@ export class DatabaseStorage implements IStorage {
       }
     }
   }
+
+  // Activity Logs
+  async getActivityLogs(teamId: number, taskId: number): Promise<ActivityLog[]> {
+    return db.select().from(activityLogs)
+      .where(and(eq(activityLogs.teamId, teamId), eq(activityLogs.taskId, taskId)))
+      .orderBy(asc(activityLogs.createdAt));
+  }
+  async createActivityLog(log: InsertActivityLog): Promise<ActivityLog> {
+    const [created] = await db.insert(activityLogs).values(log).returning();
+    return created;
+  }
+
+  // Notifications
+  async getNotifications(teamId: number, recipientName: string): Promise<Notification[]> {
+    return db.select().from(notifications)
+      .where(and(eq(notifications.teamId, teamId), eq(notifications.recipientName, recipientName)))
+      .orderBy(desc(notifications.createdAt));
+  }
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [created] = await db.insert(notifications).values(notification).returning();
+    return created;
+  }
+  async markNotificationRead(teamId: number, id: number): Promise<void> {
+    await db.update(notifications).set({ read: "true" })
+      .where(and(eq(notifications.id, id), eq(notifications.teamId, teamId)));
+  }
+  async markAllNotificationsRead(teamId: number, recipientName: string): Promise<void> {
+    await db.update(notifications).set({ read: "true" })
+      .where(and(eq(notifications.teamId, teamId), eq(notifications.recipientName, recipientName)));
+  }
+}
+
+export async function logTaskChange(
+  storage: IStorage,
+  teamId: number,
+  taskId: number,
+  authorName: string,
+  changeDescription: string
+) {
+  await storage.createActivityLog({
+    teamId,
+    taskId,
+    authorName,
+    type: "change",
+    content: changeDescription,
+  });
 }
 
 export const storage = new DatabaseStorage();

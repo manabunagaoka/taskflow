@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Calendar, AlertTriangle } from "lucide-react";
+import { Calendar, AlertTriangle, Bot } from "lucide-react";
 import { format, isPast, isToday, parseISO } from "date-fns";
 
 const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
@@ -94,6 +94,7 @@ export function TaskCard({
               </AvatarFallback>
             </Avatar>
             <span className="text-[11px] text-muted-foreground">{assignee.name.split(" ")[0]}</span>
+            {(assignee as any).type === "agent" && <Bot className="h-3 w-3 text-muted-foreground" />}
           </div>
         ) : (
           <span className="text-[11px] text-muted-foreground italic">Unassigned</span>

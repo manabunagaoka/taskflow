@@ -9,6 +9,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TeamProvider } from "@/lib/team-context";
+import { UserProvider } from "@/context/user-context";
+import { UserSelector } from "@/components/user-selector";
+import { NotificationBell } from "@/components/notification-bell";
 import NotFound from "@/pages/not-found";
 import Board from "@/pages/board";
 import Team from "@/pages/team";
@@ -25,20 +28,25 @@ function TeamLayout() {
 
   return (
     <TeamProvider>
+      <UserProvider>
       <SidebarProvider style={sidebarStyle as React.CSSProperties}>
         <div className="flex h-screen w-full">
           <AppSidebar />
           <div className="flex flex-col flex-1 overflow-hidden">
             <header className="flex items-center justify-between px-4 py-2 border-b shrink-0">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
-              <ThemeToggle />
+              <div className="flex items-center gap-3">
+                <UserSelector />
+                <NotificationBell />
+                <ThemeToggle />
+              </div>
             </header>
             <main className="flex-1 overflow-hidden">
               <Switch>
-                <Route path="/t/:teamSlug" component={Board} />
+                <Route path="/t/:teamSlug" component={Projects} />
                 <Route path="/t/:teamSlug/board" component={Board} />
+                <Route path="/t/:teamSlug/board/:projectId" component={Board} />
                 <Route path="/t/:teamSlug/team" component={Team} />
-                <Route path="/t/:teamSlug/projects" component={Projects} />
                 <Route path="/t/:teamSlug/settings" component={Settings} />
                 <Route component={NotFound} />
               </Switch>
@@ -46,6 +54,7 @@ function TeamLayout() {
           </div>
         </div>
       </SidebarProvider>
+      </UserProvider>
     </TeamProvider>
   );
 }

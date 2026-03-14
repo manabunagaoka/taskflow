@@ -11,8 +11,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2, Users, LogOut, Mail } from "lucide-react";
+import { Plus, Pencil, Trash2, Users, LogOut, Mail, Bot } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
@@ -33,6 +34,7 @@ export default function Team() {
   const [phone, setPhone] = useState("");
   const [notifyEmail, setNotifyEmail] = useState(false);
   const [notifyPhone, setNotifyPhone] = useState(false);
+  const [memberType, setMemberType] = useState("person");
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [leaveMemberId, setLeaveMemberId] = useState<number | null>(null);
   const { apiBase } = useTeam();
@@ -45,6 +47,7 @@ export default function Team() {
     mutationFn: async () => {
       const res = await apiRequest("POST", `${apiBase}/members`, {
         name, role, color,
+        type: memberType,
         email: email || null,
         phone: phone || null,
         notifyEmail: notifyEmail ? "on" : "off",
@@ -63,6 +66,7 @@ export default function Team() {
     mutationFn: async () => {
       const res = await apiRequest("PATCH", `${apiBase}/members/${editingMember!.id}`, {
         name, role, color,
+        type: memberType,
         email: email || null,
         phone: phone || null,
         notifyEmail: notifyEmail ? "on" : "off",
@@ -96,6 +100,7 @@ export default function Team() {
     setPhone("");
     setNotifyEmail(false);
     setNotifyPhone(false);
+    setMemberType("person");
     setDialogOpen(true);
   };
 
@@ -108,6 +113,7 @@ export default function Team() {
     setPhone((m as any).phone || "");
     setNotifyEmail((m as any).notifyEmail === "on");
     setNotifyPhone((m as any).notifyPhone === "on");
+    setMemberType((m as any).type || "person");
     setDialogOpen(true);
   };
 
@@ -164,6 +170,7 @@ export default function Team() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-medium truncate">{m.name}</h3>
+                      {(m as any).type === "agent" && <Bot className="h-3.5 w-3.5 text-muted-foreground" />}
                       <Badge variant="secondary" className="text-[10px]">{m.role}</Badge>
                     </div>
                     <div className="flex items-center gap-4 mt-1.5">
@@ -252,6 +259,18 @@ export default function Team() {
                   />
                 ))}
               </div>
+            </div>
+            <div>
+              <Label>Type</Label>
+              <Select value={memberType} onValueChange={setMemberType}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="person">Person</SelectItem>
+                  <SelectItem value="agent">Agent (AI)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label htmlFor="member-email">Email</Label>

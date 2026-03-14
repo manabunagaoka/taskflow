@@ -5,13 +5,14 @@ import { useTeam } from "@/lib/team-context";
 import type { Member } from "@shared/schema";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Upload, Database, Trash2 } from "lucide-react";
+import { Download, Upload, Database, Trash2, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
 export default function Settings() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
   const { apiBase, teamSlug } = useTeam();
   const [, navigate] = useLocation();
 
@@ -70,6 +71,28 @@ export default function Settings() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const handleExcelExport = () => {
+    window.open(`${apiBase}/export/excel`, "_blank");
+  };
+
+  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = (reader.result as string).split(",")[1];
+      try {
+        await apiRequest("POST", `${apiBase}/import/excel`, { data: base64 });
+        queryClient.invalidateQueries();
+        toast({ title: "Excel import successful" });
+      } catch {
+        toast({ title: "Excel import failed", variant: "destructive" });
+      }
+    };
+    reader.readAsDataURL(file);
+    if (excelInputRef.current) excelInputRef.current.value = "";
+  };
+
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <h1 className="text-xl font-semibold mb-1">Settings</h1>
@@ -122,6 +145,42 @@ export default function Settings() {
                 <Upload className="h-4 w-4 mr-1" />
                 Import JSON
               </Button>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-start gap-4">
+            <div className="p-2 rounded-lg bg-green-500/10">
+              <FileSpreadsheet className="h-5 w-5 text-green-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-medium mb-1">Excel Export / Import</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Export your data as an Excel spreadsheet (.xlsx) with Tasks, Team, and Projects sheets.
+                Import from a similarly formatted Excel file to add data.
+              </p>
+              <input
+                ref={excelInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleExcelImport}
+                className="hidden"
+              />
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleExcelExport}>
+                  <Download className="h-4 w-4 mr-1" />
+                  Export Excel
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => excelInputRef.current?.click()}
+                >
+                  <Upload className="h-4 w-4 mr-1" />
+                  Import Excel
+                </Button>
+              </div>
             </div>
           </div>
         </Card>
