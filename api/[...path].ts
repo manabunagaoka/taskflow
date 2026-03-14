@@ -2,8 +2,8 @@ import express from "express";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, asc } from "drizzle-orm";
-import * as schema from "../shared/schema";
-import { insertMemberSchema, insertProjectSchema, insertTaskSchema } from "../shared/schema";
+import * as schema from "./_schema";
+import { insertMemberSchema, insertProjectSchema, insertTaskSchema } from "./_schema";
 
 export const config = {
   api: { bodyParser: false },
