@@ -173,10 +173,9 @@ app.post("/api/import", async (req, res) => {
 });
 
 export default function handler(req: any, res: any) {
-  // Vercel catch-all rewrites the URL — reconstruct the original path
-  if (req.query?.path) {
-    const pathSegments = Array.isArray(req.query.path) ? req.query.path : [req.query.path];
-    req.url = "/api/" + pathSegments.join("/");
-  }
+  // Vercel catch-all adds query params that confuse Express routing.
+  // Strip query string so Express sees clean paths like /api/members/5
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  req.url = url.pathname;
   app(req, res);
 }
