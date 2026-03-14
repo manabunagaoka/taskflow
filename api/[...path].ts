@@ -26,8 +26,9 @@ app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,
     hasDbUrl: !!process.env.DATABASE_URL,
-    dbUrlPrefix: process.env.DATABASE_URL?.substring(0, 20) + "...",
+    dbUrlLength: process.env.DATABASE_URL?.length || 0,
     nodeEnv: process.env.NODE_ENV,
+    envKeys: Object.keys(process.env).filter(k => k.startsWith("DATA") || k.startsWith("NODE") || k.startsWith("VERCEL")),
   });
 });
 
