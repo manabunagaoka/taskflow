@@ -182,13 +182,21 @@ app.use((req, res) => {
     path: req.path,
     params: req.params,
     body: req.body,
+    headers_x_vercel_url: req.headers["x-vercel-forwarded-for"],
+    headers_x_now_route: req.headers["x-now-route-matches"],
   });
 });
 
 export default function handler(req: any, res: any) {
-  // Vercel catch-all adds query params that confuse Express routing.
-  // Strip query string so Express sees clean paths like /api/members/5
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  req.url = url.pathname;
+  // Vercel rewrites /api/members/5 -> /api, but x-now-route-matches has the original path
+  // Reconstruct the original URL from Vercel headers
+  const routeMatches = req.headers["x-now-route-matches"];
+  if (routeMatches) {
+    const params = new URLSearchParams(routeMatches);
+    const matched = params.get("1");
+    if (matched) {
+      req.url = "/api/" + decodeURIComponent(matched);
+    }
+  }
   app(req, res);
 }
