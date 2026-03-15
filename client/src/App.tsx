@@ -67,7 +67,7 @@ function App() {
             <Switch>
               <Route path="/" component={Landing} />
               <Route path="/admin/:key" component={Admin} />
-              <Route path="/t/:teamSlug/:rest*" component={TeamLayout} />
+              <Route path="/t/:teamSlug/*" component={TeamLayout} />
               <Route path="/t/:teamSlug" component={TeamLayout} />
               <Route component={NotFound} />
             </Switch>
