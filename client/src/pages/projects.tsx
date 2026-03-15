@@ -245,8 +245,7 @@ export default function Projects() {
           {/* Unassigned tasks card */}
           {unassignedTasks.length > 0 && (
             <Card
-              className="p-4 cursor-pointer hover:shadow-md transition-shadow border-dashed"
-              onClick={() => navigate(`/t/${teamSlug}/board`)}
+              className="p-4 border-dashed"
             >
               <div className="flex items-start gap-3">
                 <div className="w-3 h-3 rounded-full mt-1 shrink-0 bg-muted-foreground/30" />

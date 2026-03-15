@@ -44,7 +44,6 @@ function TeamLayout() {
             <main className="flex-1 overflow-hidden">
               <Switch>
                 <Route path="/t/:teamSlug" component={Projects} />
-                <Route path="/t/:teamSlug/board" component={Board} />
                 <Route path="/t/:teamSlug/board/:projectId" component={Board} />
                 <Route path="/t/:teamSlug/team" component={Team} />
                 <Route path="/t/:teamSlug/settings" component={Settings} />

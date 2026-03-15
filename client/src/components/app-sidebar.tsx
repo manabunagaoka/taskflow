@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, Users, FolderKanban, Settings, ArrowLeftRight, Mail } from "lucide-react";
+import { Users, FolderKanban, Settings, ArrowLeftRight, Mail } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -17,7 +17,6 @@ import { useTeam } from "@/lib/team-context";
 
 const navItems = [
   { title: "Projects", path: "", icon: FolderKanban },
-  { title: "Board", path: "/board", icon: LayoutDashboard },
   { title: "Team", path: "/team", icon: Users },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
@@ -53,7 +52,7 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
                       asChild
-                      data-active={location === href || (item.path === "" && location === `${base}/board`)}
+                      data-active={location === href || (item.path === "" && location.startsWith(`${base}/board`))}
                     >
                       <Link href={href}>
                         <item.icon />
