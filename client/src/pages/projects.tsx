@@ -134,12 +134,6 @@ export default function Projects() {
       .slice(0, 5);
   };
 
-  const unassignedTasks = tasks.filter((t) => !t.projectId);
-  const unassignedDone = unassignedTasks.filter((t) => t.status === "done").length;
-  const unassignedProgress = unassignedTasks.length > 0
-    ? Math.round(unassignedTasks.reduce((s, t) => s + t.progress, 0) / unassignedTasks.length)
-    : 0;
-
   return (
     <div className="p-6 max-w-5xl mx-auto overflow-y-auto h-full">
       <div className="flex items-center justify-between mb-6">
@@ -153,7 +147,7 @@ export default function Projects() {
         </Button>
       </div>
 
-      {projects.length === 0 && unassignedTasks.length === 0 ? (
+      {projects.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
           <FolderOpen className="h-10 w-10 mb-3 text-muted-foreground/50" />
           <p className="text-sm font-medium mb-1">No projects yet</p>
@@ -173,7 +167,7 @@ export default function Projects() {
               <Card
                 key={p.id}
                 className="p-4 cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => navigate(`/t/${teamSlug}/board/${p.id}`)}
+                onClick={() => navigate(`/t/${teamSlug}/project/${p.id}`)}
                 data-testid={`project-card-${p.id}`}
               >
                 <div className="flex items-start gap-3">
@@ -241,41 +235,6 @@ export default function Projects() {
               </Card>
             );
           })}
-
-          {/* Unassigned tasks card */}
-          {unassignedTasks.length > 0 && (
-            <Card
-              className="p-4 border-dashed"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-3 h-3 rounded-full mt-1 shrink-0 bg-muted-foreground/30" />
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm font-medium">Unassigned Tasks</h3>
-                  <div className="flex items-center gap-3 mt-1">
-                    <Badge variant="secondary" className="text-[10px]">
-                      {unassignedTasks.length} tasks
-                    </Badge>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {unassignedDone} done
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Progress value={unassignedProgress} className="h-1.5 flex-1" />
-                    <span className="text-[10px] text-muted-foreground tabular-nums">{unassignedProgress}%</span>
-                  </div>
-                  {unassignedTasks.slice(0, 3).map((task) => {
-                    const assignee = members.find((m) => m.id === task.assigneeId);
-                    return (
-                      <div key={task.id} className="flex items-center gap-2 text-xs mt-1.5">
-                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${STATUS_DOT[task.status] || "bg-gray-400"}`} />
-                        <span className="truncate flex-1">{task.title}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </Card>
-          )}
         </div>
       )}
 

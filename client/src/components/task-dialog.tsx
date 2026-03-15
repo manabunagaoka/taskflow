@@ -32,7 +32,7 @@ const taskFormSchema = z.object({
   priority: z.string(),
   progress: z.number().min(0).max(100),
   assigneeId: z.string().optional(),
-  projectId: z.string().optional(),
+  projectId: z.string().min(1, "Project is required"),
   dueDate: z.string().optional(),
 });
 
@@ -44,12 +44,14 @@ export function TaskDialog({
   task,
   members,
   projects,
+  defaultProjectId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   task: Task | null;
   members: Member[];
   projects: Project[];
+  defaultProjectId?: number;
 }) {
   const { toast } = useToast();
   const { apiBase } = useTeam();
@@ -94,7 +96,7 @@ export function TaskDialog({
         priority: "medium",
         progress: 0,
         assigneeId: "",
-        projectId: "",
+        projectId: defaultProjectId ? String(defaultProjectId) : "",
         dueDate: "",
       });
     }
@@ -112,7 +114,7 @@ export function TaskDialog({
       const body = {
         ...data,
         assigneeId: data.assigneeId ? parseInt(data.assigneeId) : null,
-        projectId: data.projectId ? parseInt(data.projectId) : null,
+        projectId: parseInt(data.projectId),
         dueDate: data.dueDate || null,
         description: data.description || null,
       };
@@ -131,7 +133,7 @@ export function TaskDialog({
       const body = {
         ...data,
         assigneeId: data.assigneeId ? parseInt(data.assigneeId) : null,
-        projectId: data.projectId ? parseInt(data.projectId) : null,
+        projectId: parseInt(data.projectId),
         dueDate: data.dueDate || null,
         description: data.description || null,
         changedBy: currentUser || "Someone",
@@ -292,12 +294,11 @@ export function TaskDialog({
             </div>
             <div>
               <Label>Project</Label>
-              <Select value={form.watch("projectId")} onValueChange={(v) => form.setValue("projectId", v === "none" ? "" : v)}>
+              <Select value={form.watch("projectId")} onValueChange={(v) => form.setValue("projectId", v)}>
                 <SelectTrigger data-testid="select-task-project">
-                  <SelectValue placeholder="No project" />
+                  <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No project</SelectItem>
                   {projects.map((p) => (
                     <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
                   ))}

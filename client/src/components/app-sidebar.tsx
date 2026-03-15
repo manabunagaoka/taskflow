@@ -52,7 +52,7 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
                       asChild
-                      data-active={location === href || (item.path === "" && location.startsWith(`${base}/board`))}
+                      data-active={location === href || (item.path === "" && (location.startsWith(`${base}/board`) || location.startsWith(`${base}/project`)))}
                     >
                       <Link href={href}>
                         <item.icon />

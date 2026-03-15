@@ -117,11 +117,10 @@ export default function Board() {
         <div className="flex items-center gap-3 flex-wrap">
           {activeProject ? (
             <>
-              <Link href={`/t/${teamSlug}`} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <Link href={`/t/${teamSlug}/project/${activeProjectId}`} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <ArrowLeft className="h-4 w-4" />
-                Projects
+                {activeProject.name}
               </Link>
-              <span className="text-sm font-semibold">{activeProject.name}</span>
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: activeProject.color }} />
             </>
           ) : (
@@ -260,6 +259,7 @@ export default function Board() {
         task={editingTask}
         members={members}
         projects={projects}
+        defaultProjectId={activeProjectId || undefined}
       />
     </div>
   );

@@ -16,6 +16,7 @@ import NotFound from "@/pages/not-found";
 import Board from "@/pages/board";
 import Team from "@/pages/team";
 import Projects from "@/pages/projects";
+import ProjectDetail from "@/pages/project-detail";
 import Settings from "@/pages/settings";
 import Landing from "@/pages/landing";
 import Admin from "@/pages/admin";
@@ -43,6 +44,7 @@ function TeamLayout() {
             </header>
             <main className="flex-1 overflow-hidden">
               <Switch>
+                <Route path="/t/:teamSlug/project/:projectId" component={ProjectDetail} />
                 <Route path="/t/:teamSlug/board/:projectId" component={Board} />
                 <Route path="/t/:teamSlug/team" component={Team} />
                 <Route path="/t/:teamSlug/settings" component={Settings} />

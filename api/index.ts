@@ -125,6 +125,8 @@ app.post("/api/teams", async (req, res) => {
   const [existing] = await db.select().from(teams).where(eq(teams.slug, slug));
   if (existing) return res.status(409).json({ error: "Team slug already taken" });
   const [team] = await db.insert(teams).values({ ...parsed.data, slug }).returning();
+  // Auto-create Misc project
+  await db.insert(projects).values({ teamId: team.id, name: "Misc", color: "#6B7280" });
   if (req.body.founderName) {
     const [member] = await db.insert(members).values({
       teamId: team.id,

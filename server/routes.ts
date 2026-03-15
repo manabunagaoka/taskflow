@@ -33,6 +33,8 @@ export async function registerRoutes(
     if (existing) return res.status(409).json({ error: "Team slug already taken" });
     const team = await storage.createTeam({ ...parsed.data, slug });
     // Create founding member if provided
+    // Auto-create Misc project
+    await storage.createProject({ teamId: team.id, name: "Misc", color: "#6B7280" });
     if (req.body.founderName) {
       const member = await storage.createMember({
         teamId: team.id,
