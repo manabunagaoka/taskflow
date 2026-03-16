@@ -588,16 +588,22 @@ app.post(`${t}/import/excel`, resolveTeam, async (req, res) => {
 // ─── Team Rename ───
 app.patch(`${t}`, resolveTeam, async (req, res) => {
   const team = (req as any).team;
-  const { name } = req.body;
-  if (!name || typeof name !== "string" || !name.trim()) {
-    return res.status(400).json({ error: "Name is required" });
+  const { name, passkey } = req.body;
+  const updates: any = {};
+  if (name && typeof name === "string" && name.trim()) {
+    const newSlug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    if (newSlug !== team.slug) {
+      const [existing] = await db.select().from(teams).where(eq(teams.slug, newSlug));
+      if (existing) return res.status(409).json({ error: "This team name is already taken" });
+    }
+    updates.name = name.trim();
+    updates.slug = newSlug;
   }
-  const newSlug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  if (newSlug !== team.slug) {
-    const [existing] = await db.select().from(teams).where(eq(teams.slug, newSlug));
-    if (existing) return res.status(409).json({ error: "This team name is already taken" });
+  if (passkey !== undefined) {
+    updates.passkey = passkey || null;
   }
-  const [updated] = await db.update(teams).set({ name: name.trim(), slug: newSlug }).where(eq(teams.id, team.id)).returning();
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: "Nothing to update" });
+  const [updated] = await db.update(teams).set(updates).where(eq(teams.id, team.id)).returning();
   res.json(updated);
 });
 

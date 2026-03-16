@@ -73,7 +73,7 @@ export function AppSidebar() {
             Switch / Create Team
           </Button>
         </Link>
-        <a href="mailto:hello@manaboodle.com">
+        <a href="#" onClick={(e) => e.preventDefault()}>
           <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-muted-foreground">
             <Mail className="h-3.5 w-3.5 mr-1.5" />
             Contact Admin

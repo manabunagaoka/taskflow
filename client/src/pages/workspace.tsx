@@ -19,7 +19,7 @@ import {
   Plus, Trash2, Users, Pencil, Bot, Send, ExternalLink,
   MessageSquare, RefreshCw, AlertTriangle, FolderOpen,
   LogOut, CheckCircle2, ArrowLeft, Filter, GripVertical,
-  AlertCircle,
+  AlertCircle, Mail, KeyRound, Settings,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { UserSelector } from "@/components/user-selector";
@@ -98,6 +98,18 @@ export default function Workspace() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
 
+  // Passkey dialog
+  const [passkeyDialogOpen, setPasskeyDialogOpen] = useState(false);
+  const [newPasskey, setNewPasskey] = useState("");
+
+  // Contact Admin dialog
+  const [contactAdminOpen, setContactAdminOpen] = useState(false);
+  const [contactName, setContactName] = useState("");
+  const [contactOrg, setContactOrg] = useState("");
+  const [contactTeamName, setContactTeamName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [contactMessage, setContactMessage] = useState("");
+
   // Folder dialog
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
@@ -120,6 +132,9 @@ export default function Workspace() {
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: [`${apiBase}/projects`] });
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: [`${apiBase}/tasks`] });
   const { data: members = [] } = useQuery<Member[]>({ queryKey: [`${apiBase}/members`] });
+  const { data: teamInfo } = useQuery<{ id: number; createdBy: number | null; hasPasskey: boolean }>({
+    queryKey: [`/api/teams/${teamSlug}`],
+  });
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedTask = tasks.find((t) => t.id === selectedTaskId);
@@ -289,6 +304,22 @@ export default function Workspace() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message || "Failed to rename", variant: "destructive" });
+    },
+  });
+
+  // Passkey update
+  const updatePasskey = useMutation({
+    mutationFn: async (passkey: string | null) => {
+      const res = await apiRequest("PATCH", apiBase, { passkey });
+      return res.json();
+    },
+    onSuccess: () => {
+      setPasskeyDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamSlug}`] });
+      toast({ title: newPasskey ? "Passkey updated" : "Passkey removed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update passkey", variant: "destructive" });
     },
   });
 
@@ -1191,14 +1222,46 @@ export default function Workspace() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <button
-              onClick={() => { setNewTeamName(teamName || teamSlug); setRenameDialogOpen(true); }}
-              className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Pencil className="h-3 w-3" /><span>Rename Team</span>
-            </button>
+            {/* Quick actions */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <button
+                onClick={() => { setNewTeamName(teamName || teamSlug); setRenameDialogOpen(true); }}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Pencil className="h-3 w-3" /><span>Rename</span>
+              </button>
+              <button
+                onClick={() => { setNewPasskey(""); setPasskeyDialogOpen(true); }}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <KeyRound className="h-3 w-3" /><span>{teamInfo?.hasPasskey ? "Change Passkey" : "Set Passkey"}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setContactName(""); setContactOrg(""); setContactTeamName(teamName || teamSlug);
+                  setContactEmail(""); setContactMessage(""); setContactAdminOpen(true);
+                }}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Mail className="h-3 w-3" /><span>Contact Admin</span>
+              </button>
+              {(() => {
+                const owner = teamInfo?.createdBy ? members.find(m => m.id === teamInfo.createdBy) : null;
+                if (owner?.email) {
+                  return (
+                    <a
+                      href={`mailto:${owner.email}?subject=TaskFlow Team: ${teamName || teamSlug}`}
+                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Mail className="h-3 w-3" /><span>Contact Owner ({owner.name})</span>
+                    </a>
+                  );
+                }
+                return null;
+              })()}
+            </div>
 
-            <div className="flex items-center justify-between">
+            <div className="border-t pt-3 flex items-center justify-between">
               <span className="text-sm text-muted-foreground">{members.length} members</span>
               <Button size="sm" onClick={openNewMember}>
                 <Plus className="h-3.5 w-3.5 mr-1" />Add Member
@@ -1232,6 +1295,109 @@ export default function Workspace() {
               <LogOut className="h-3 w-3 mr-1" />Switch Team
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== PASSKEY MANAGEMENT DIALOG ===== */}
+      <Dialog open={passkeyDialogOpen} onOpenChange={setPasskeyDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4" />
+              {teamInfo?.hasPasskey ? "Change Passkey" : "Set Passkey"}
+            </DialogTitle>
+            <DialogDescription>
+              {teamInfo?.hasPasskey
+                ? "Update or remove the passkey required to join this team."
+                : "Set a passkey that new members must enter to join this team."}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (!newPasskey.trim()) return;
+            updatePasskey.mutate(newPasskey.trim());
+          }} className="space-y-4">
+            <div>
+              <Label>New Passkey</Label>
+              <Input
+                value={newPasskey}
+                onChange={(e) => setNewPasskey(e.target.value)}
+                placeholder="Enter new passkey"
+                autoFocus
+              />
+            </div>
+            <DialogFooter className="flex gap-2">
+              {teamInfo?.hasPasskey && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => {
+                    if (confirm("Remove passkey? Anyone will be able to join without one.")) {
+                      updatePasskey.mutate("");
+                    }
+                  }}
+                  disabled={updatePasskey.isPending}
+                >
+                  Remove
+                </Button>
+              )}
+              <div className="flex-1" />
+              <Button type="button" variant="outline" onClick={() => setPasskeyDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={!newPasskey.trim() || updatePasskey.isPending}>Save</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== CONTACT ADMIN DIALOG ===== */}
+      <Dialog open={contactAdminOpen} onOpenChange={setContactAdminOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              Contact Admin
+            </DialogTitle>
+            <DialogDescription>Send a message to the TaskFlow administrator.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()) return;
+            const subject = encodeURIComponent(`TaskFlow Contact: ${contactTeamName || "General"}`);
+            const body = encodeURIComponent(
+              `Name: ${contactName.trim()}\nOrganization: ${contactOrg.trim() || "N/A"}\nTeam: ${contactTeamName.trim() || "N/A"}\nEmail: ${contactEmail.trim()}\n\nMessage:\n${contactMessage.trim()}`
+            );
+            // TODO: wire up to platform email when published on manaboodle.com
+            toast({ title: "Message composed", description: "Contact form will be connected soon." });
+            setContactAdminOpen(false);
+          }} className="space-y-3">
+            <div>
+              <Label>Name <span className="text-destructive">*</span></Label>
+              <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Your name" required />
+            </div>
+            <div>
+              <Label>Organization</Label>
+              <Input value={contactOrg} onChange={(e) => setContactOrg(e.target.value)} placeholder="Your organization (optional)" />
+            </div>
+            <div>
+              <Label>Team Name</Label>
+              <Input value={contactTeamName} onChange={(e) => setContactTeamName(e.target.value)} placeholder="Team name" />
+            </div>
+            <div>
+              <Label>Email <span className="text-destructive">*</span></Label>
+              <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="your@email.com" required />
+            </div>
+            <div>
+              <Label>Message <span className="text-destructive">*</span></Label>
+              <Textarea value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} placeholder="How can we help?" rows={4} required />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setContactAdminOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()}>
+                <Mail className="h-3.5 w-3.5 mr-1" />Send
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

@@ -529,16 +529,22 @@ export async function registerRoutes(
   // ─── Team Rename ───
   app.patch(`${t}`, resolveTeam, async (req, res) => {
     const team = (req as any).team;
-    const { name } = req.body;
-    if (!name || typeof name !== "string" || !name.trim()) {
-      return res.status(400).json({ error: "Name is required" });
+    const { name, passkey } = req.body;
+    const updates: any = {};
+    if (name && typeof name === "string" && name.trim()) {
+      const newSlug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      if (newSlug !== team.slug) {
+        const existing = await storage.getTeamBySlug(newSlug);
+        if (existing) return res.status(409).json({ error: "This team name is already taken" });
+      }
+      updates.name = name.trim();
+      updates.slug = newSlug;
     }
-    const newSlug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    if (newSlug !== team.slug) {
-      const existing = await storage.getTeamBySlug(newSlug);
-      if (existing) return res.status(409).json({ error: "This team name is already taken" });
+    if (passkey !== undefined) {
+      updates.passkey = passkey || null;
     }
-    const updated = await storage.updateTeam(team.id, { name: name.trim(), slug: newSlug });
+    if (Object.keys(updates).length === 0) return res.status(400).json({ error: "Nothing to update" });
+    const updated = await storage.updateTeam(team.id, updates);
     res.json(updated);
   });
 

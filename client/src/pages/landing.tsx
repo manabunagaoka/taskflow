@@ -38,7 +38,7 @@ export default function Landing() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!slugClean || slugClean.length < 2 || !founderName.trim()) return;
+    if (!slugClean || slugClean.length < 2 || !founderName.trim() || !founderEmail.trim()) return;
     setCreating(true);
     try {
       const res = await fetch("/api/teams", {
@@ -201,10 +201,11 @@ export default function Landing() {
                 required
               />
               <Input
-                placeholder="Email (optional, for notifications)"
+                placeholder="Email (required, for team recovery)"
                 type="email"
                 value={founderEmail}
                 onChange={(e) => setFounderEmail(e.target.value)}
+                required
               />
               <div>
                 <Input
