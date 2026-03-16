@@ -26,6 +26,8 @@ import { UserSelector } from "@/components/user-selector";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatDistanceToNow, isPast, isToday, parseISO, differenceInDays } from "date-fns";
 import { useLocation } from "wouter";
 
@@ -54,6 +56,13 @@ function useDebouncedMutate(mutate: (data: any) => void, delay = 500) {
 
 type TaskFilter = "all" | "high" | "overdue" | "due-soon" | "mine";
 
+function getTaskAssigneeIds(task: Task): number[] {
+  if ((task as any).assigneeIds) {
+    try { return JSON.parse((task as any).assigneeIds); } catch { /* fall through */ }
+  }
+  return task.assigneeId ? [task.assigneeId] : [];
+}
+
 export default function Workspace() {
   const { toast } = useToast();
   const { apiBase, teamSlug, teamName } = useTeam();
@@ -70,6 +79,8 @@ export default function Workspace() {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectName, setProjectName] = useState("");
   const [projectColor, setProjectColor] = useState(PROJECT_COLORS[0]);
+  const [projectDescription, setProjectDescription] = useState("");
+  const [projectOwnerId, setProjectOwnerId] = useState<string>("");
 
   const [addingTask, setAddingTask] = useState(false);
   const [addingNote, setAddingNote] = useState(false);
@@ -146,7 +157,7 @@ export default function Workspace() {
       });
     } else if (taskFilter === "mine") {
       const me = members.find((m) => m.name === currentUser);
-      if (me) filtered = filtered.filter((t) => t.assigneeId === me.id);
+      if (me) filtered = filtered.filter((t) => getTaskAssigneeIds(t).includes(me.id));
     }
 
     const active = filtered.filter((t) => t.status !== "done").sort((a, b) => a.order - b.order);
@@ -174,7 +185,12 @@ export default function Workspace() {
   // === MUTATIONS ===
   const createProject = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `${apiBase}/projects`, { name: projectName, color: projectColor });
+      const res = await apiRequest("POST", `${apiBase}/projects`, {
+        name: projectName,
+        color: projectColor,
+        description: projectDescription || null,
+        ownerId: projectOwnerId ? parseInt(projectOwnerId) : null,
+      });
       return res.json();
     },
     onSuccess: (data) => {
@@ -187,7 +203,12 @@ export default function Workspace() {
 
   const updateProject = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `${apiBase}/projects/${editingProject!.id}`, { name: projectName, color: projectColor });
+      const res = await apiRequest("PATCH", `${apiBase}/projects/${editingProject!.id}`, {
+        name: projectName,
+        color: projectColor,
+        description: projectDescription || null,
+        ownerId: projectOwnerId ? parseInt(projectOwnerId) : null,
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -377,6 +398,8 @@ export default function Workspace() {
     setEditingProject(null);
     setProjectName("");
     setProjectColor(PROJECT_COLORS[projects.length % PROJECT_COLORS.length]);
+    setProjectDescription("");
+    setProjectOwnerId("");
     setProjectDialogOpen(true);
   };
 
@@ -384,6 +407,8 @@ export default function Workspace() {
     setEditingProject(p);
     setProjectName(p.name);
     setProjectColor(p.color);
+    setProjectDescription((p as any).description || "");
+    setProjectOwnerId((p as any).ownerId ? String((p as any).ownerId) : "");
     setProjectDialogOpen(true);
   };
 
@@ -505,8 +530,9 @@ export default function Workspace() {
         {selectedProject && (
           <div className="absolute right-2">
             <Select value={taskFilter} onValueChange={(v) => setTaskFilter(v as TaskFilter)}>
-              <SelectTrigger className="h-6 w-6 p-0 border-none shadow-none [&>svg]:hidden">
-                <Filter className={`h-3.5 w-3.5 ${taskFilter !== "all" ? "text-primary" : "text-muted-foreground"}`} />
+              <SelectTrigger className={`h-7 px-2 gap-1 text-xs border rounded-md shadow-sm ${taskFilter !== "all" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>
+                <Filter className="h-3 w-3" />
+                <span className="hidden sm:inline">{taskFilter === "all" ? "Filter" : taskFilter === "high" ? "High" : taskFilter === "overdue" ? "Overdue" : taskFilter === "due-soon" ? "Due Soon" : "Mine"}</span>
               </SelectTrigger>
               <SelectContent align="end">
                 <SelectItem value="all">All Tasks</SelectItem>
@@ -530,7 +556,8 @@ export default function Workspace() {
               {(provided) => (
                 <div className="py-1" ref={provided.innerRef} {...provided.droppableProps}>
                   {projectTasks.map((t, index) => {
-                    const assignee = members.find((m) => m.id === t.assigneeId);
+                    const taskAssigneeIds = getTaskAssigneeIds(t);
+                    const assignees = members.filter((m) => taskAssigneeIds.includes(m.id));
                     const isDone = t.status === "done";
                     const selected = selectedTaskId === t.id;
                     const isOverdue = t.dueDate && !isDone && isPast(parseISO(t.dueDate)) && !isToday(parseISO(t.dueDate));
@@ -546,13 +573,16 @@ export default function Workspace() {
                         >
                           <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
                           <span className="text-sm flex-1 truncate line-through">{t.title}</span>
-                          {assignee && (
-                            <Avatar className="h-5 w-5 shrink-0">
-                              <AvatarFallback className="text-[8px] font-semibold text-white" style={{ backgroundColor: assignee.color }}>
-                                {getInitials(assignee.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                          )}
+                          <div className="flex -space-x-1.5 shrink-0">
+                            {assignees.slice(0, 3).map((a) => (
+                              <Avatar key={a.id} className="h-5 w-5 ring-1 ring-background">
+                                <AvatarFallback className="text-[8px] font-semibold text-white" style={{ backgroundColor: a.color }}>
+                                  {getInitials(a.name)}
+                                </AvatarFallback>
+                              </Avatar>
+                            ))}
+                            {assignees.length > 3 && <span className="text-[9px] text-muted-foreground ml-1">+{assignees.length - 3}</span>}
+                          </div>
                         </div>
                       );
                     }
@@ -576,13 +606,16 @@ export default function Workspace() {
                             }`} />
                             <span className="text-sm flex-1 truncate">{t.title}</span>
                             {isOverdue && <AlertTriangle className="h-3 w-3 text-red-500 shrink-0" />}
-                            {assignee && (
-                              <Avatar className="h-5 w-5 shrink-0">
-                                <AvatarFallback className="text-[8px] font-semibold text-white" style={{ backgroundColor: assignee.color }}>
-                                  {getInitials(assignee.name)}
-                                </AvatarFallback>
-                              </Avatar>
-                            )}
+                            <div className="flex -space-x-1.5 shrink-0">
+                              {assignees.slice(0, 3).map((a) => (
+                                <Avatar key={a.id} className="h-5 w-5 ring-1 ring-background">
+                                  <AvatarFallback className="text-[8px] font-semibold text-white" style={{ backgroundColor: a.color }}>
+                                    {getInitials(a.name)}
+                                  </AvatarFallback>
+                                </Avatar>
+                              ))}
+                              {assignees.length > 3 && <span className="text-[9px] text-muted-foreground ml-1">+{assignees.length - 3}</span>}
+                            </div>
                           </div>
                         )}
                       </Draggable>
@@ -728,23 +761,64 @@ export default function Workspace() {
             {/* Fields */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs text-muted-foreground">Assignee</Label>
-                <Select
-                  value={selectedTask.assigneeId ? String(selectedTask.assigneeId) : "none"}
-                  onValueChange={(v) => updateTask.mutate({ id: selectedTask.id, assigneeId: v === "none" ? null : parseInt(v) })}
-                >
-                  <SelectTrigger className="mt-1 h-8 text-sm">
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Unassigned</SelectItem>
-                    {members.map((m) => (
-                      <SelectItem key={m.id} value={String(m.id)}>
-                        {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-xs text-muted-foreground">Assignees</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="mt-1 h-8 text-sm w-full justify-start font-normal">
+                      {(() => {
+                        const ids = getTaskAssigneeIds(selectedTask);
+                        if (ids.length === 0) return <span className="text-muted-foreground">Unassigned</span>;
+                        if (ids.length === members.length && members.length > 0) return "All Members";
+                        const names = members.filter(m => ids.includes(m.id)).map(m => m.name);
+                        return names.length <= 2 ? names.join(", ") : `${names[0]} +${names.length - 1}`;
+                      })()}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" align="start">
+                    <div className="space-y-1">
+                      <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer text-sm font-medium">
+                        <Checkbox
+                          checked={getTaskAssigneeIds(selectedTask).length === members.length && members.length > 0}
+                          onCheckedChange={(checked) => {
+                            const newIds = checked ? members.map(m => m.id) : [];
+                            updateTask.mutate({
+                              id: selectedTask.id,
+                              assigneeId: newIds[0] || null,
+                              assigneeIds: newIds.length > 0 ? JSON.stringify(newIds) : null,
+                            });
+                          }}
+                        />
+                        All Members
+                      </label>
+                      <div className="border-t my-1" />
+                      {members.map((m) => {
+                        const currentIds = getTaskAssigneeIds(selectedTask);
+                        const isChecked = currentIds.includes(m.id);
+                        return (
+                          <label key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={(checked) => {
+                                const newIds = checked ? [...currentIds, m.id] : currentIds.filter(id => id !== m.id);
+                                updateTask.mutate({
+                                  id: selectedTask.id,
+                                  assigneeId: newIds[0] || null,
+                                  assigneeIds: newIds.length > 0 ? JSON.stringify(newIds) : null,
+                                });
+                              }}
+                            />
+                            <Avatar className="h-5 w-5">
+                              <AvatarFallback className="text-[8px] font-semibold text-white" style={{ backgroundColor: m.color }}>
+                                {getInitials(m.name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Priority</Label>
@@ -801,13 +875,16 @@ export default function Workspace() {
             <div>
               <Label className="text-xs text-muted-foreground">Description</Label>
               <Textarea
-                className="mt-1 resize-none text-sm"
-                rows={3}
+                className="mt-1 resize-none text-sm overflow-hidden"
+                rows={2}
                 value={editDescription}
                 onChange={(e) => {
                   setEditDescription(e.target.value);
                   debouncedUpdateTask({ id: selectedTask.id, description: e.target.value || null });
+                  e.target.style.height = "auto";
+                  e.target.style.height = e.target.scrollHeight + "px";
                 }}
+                onFocus={(e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
                 placeholder="Add details..."
               />
             </div>
@@ -994,6 +1071,37 @@ export default function Workspace() {
                   <button key={c} type="button" className={`w-7 h-7 rounded-full transition-all ${projectColor === c ? "ring-2 ring-offset-2 ring-primary" : ""}`} style={{ backgroundColor: c }} onClick={() => setProjectColor(c)} />
                 ))}
               </div>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea
+                value={projectDescription}
+                onChange={(e) => {
+                  setProjectDescription(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = e.target.scrollHeight + "px";
+                }}
+                onFocus={(e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
+                placeholder="What is this project about?"
+                className="resize-none overflow-hidden"
+                rows={2}
+              />
+            </div>
+            <div>
+              <Label>Owner</Label>
+              <Select value={projectOwnerId} onValueChange={(v) => setProjectOwnerId(v === "none" ? "" : v)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="No owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No owner</SelectItem>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={String(m.id)}>
+                      {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {editingProject && (
               <div>

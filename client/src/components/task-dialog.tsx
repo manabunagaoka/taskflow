@@ -20,10 +20,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trash2, Send, MessageSquare, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
+
+function getInitials(name: string) {
+  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+}
 
 const taskFormSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -32,6 +39,7 @@ const taskFormSchema = z.object({
   priority: z.string(),
   progress: z.number().min(0).max(100),
   assigneeId: z.string().optional(),
+  assigneeIds: z.string().optional(),
   projectId: z.string().min(1, "Project is required"),
   dueDate: z.string().optional(),
 });
@@ -60,6 +68,7 @@ export function TaskDialog({
   const [comment, setComment] = useState("");
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<number[]>([]);
   const commentRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<TaskFormValues>({
@@ -85,9 +94,18 @@ export function TaskDialog({
         priority: task.priority,
         progress: task.progress,
         assigneeId: task.assigneeId ? String(task.assigneeId) : "",
+        assigneeIds: (task as any).assigneeIds || "",
         projectId: task.projectId ? String(task.projectId) : "",
         dueDate: task.dueDate || "",
       });
+      // Parse assigneeIds
+      let ids: number[] = [];
+      if ((task as any).assigneeIds) {
+        try { ids = JSON.parse((task as any).assigneeIds); } catch { /* ignore */ }
+      } else if (task.assigneeId) {
+        ids = [task.assigneeId];
+      }
+      setSelectedAssigneeIds(ids);
     } else {
       form.reset({
         title: "",
@@ -96,9 +114,11 @@ export function TaskDialog({
         priority: "medium",
         progress: 0,
         assigneeId: "",
+        assigneeIds: "",
         projectId: defaultProjectId ? String(defaultProjectId) : "",
         dueDate: "",
       });
+      setSelectedAssigneeIds([]);
     }
     setComment("");
   }, [task, open]);
@@ -113,7 +133,8 @@ export function TaskDialog({
     mutationFn: async (data: TaskFormValues) => {
       const body = {
         ...data,
-        assigneeId: data.assigneeId ? parseInt(data.assigneeId) : null,
+        assigneeId: selectedAssigneeIds[0] || null,
+        assigneeIds: selectedAssigneeIds.length > 0 ? JSON.stringify(selectedAssigneeIds) : null,
         projectId: parseInt(data.projectId),
         dueDate: data.dueDate || null,
         description: data.description || null,
@@ -132,7 +153,8 @@ export function TaskDialog({
     mutationFn: async (data: TaskFormValues) => {
       const body = {
         ...data,
-        assigneeId: data.assigneeId ? parseInt(data.assigneeId) : null,
+        assigneeId: selectedAssigneeIds[0] || null,
+        assigneeIds: selectedAssigneeIds.length > 0 ? JSON.stringify(selectedAssigneeIds) : null,
         projectId: parseInt(data.projectId),
         dueDate: data.dueDate || null,
         description: data.description || null,
@@ -241,9 +263,11 @@ export function TaskDialog({
               id="description"
               {...form.register("description")}
               placeholder="Add details..."
-              className="resize-none"
-              rows={3}
+              className="resize-none overflow-hidden"
+              rows={2}
               data-testid="input-task-description"
+              onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
+              onFocus={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
             />
           </div>
 
@@ -279,18 +303,52 @@ export function TaskDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Assignee</Label>
-              <Select value={form.watch("assigneeId")} onValueChange={(v) => form.setValue("assigneeId", v === "none" ? "" : v)}>
-                <SelectTrigger data-testid="select-task-assignee">
-                  <SelectValue placeholder="Unassigned" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Unassigned</SelectItem>
-                  {members.map((m) => (
-                    <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Assignees</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start font-normal h-9 mt-1" data-testid="select-task-assignee">
+                    {selectedAssigneeIds.length === 0
+                      ? <span className="text-muted-foreground">Unassigned</span>
+                      : selectedAssigneeIds.length === members.length && members.length > 0
+                        ? "All Members"
+                        : (() => {
+                            const names = members.filter(m => selectedAssigneeIds.includes(m.id)).map(m => m.name);
+                            return names.length <= 2 ? names.join(", ") : `${names[0]} +${names.length - 1}`;
+                          })()
+                    }
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-2" align="start">
+                  <div className="space-y-1">
+                    <label className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer text-sm font-medium">
+                      <Checkbox
+                        checked={selectedAssigneeIds.length === members.length && members.length > 0}
+                        onCheckedChange={(checked) => setSelectedAssigneeIds(checked ? members.map(m => m.id) : [])}
+                      />
+                      All Members
+                    </label>
+                    <div className="border-t my-1" />
+                    {members.map((m) => (
+                      <label key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-accent cursor-pointer text-sm">
+                        <Checkbox
+                          checked={selectedAssigneeIds.includes(m.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedAssigneeIds(prev =>
+                              checked ? [...prev, m.id] : prev.filter(id => id !== m.id)
+                            );
+                          }}
+                        />
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback className="text-[8px] font-semibold text-white" style={{ backgroundColor: m.color }}>
+                            {getInitials(m.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label>Project</Label>

@@ -16,6 +16,7 @@ const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  passkey: text("passkey"),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -39,7 +40,9 @@ const projects = pgTable("projects", {
   id: serial("id").primaryKey(),
   teamId: integer("team_id").notNull(),
   name: text("name").notNull(),
+  description: text("description"),
   color: text("color").notNull(),
+  ownerId: integer("owner_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -52,6 +55,7 @@ const tasks = pgTable("tasks", {
   priority: text("priority").notNull().default("medium"),
   progress: integer("progress").notNull().default(0),
   assigneeId: integer("assignee_id"),
+  assigneeIds: text("assignee_ids"),
   projectId: integer("project_id"),
   dueDate: text("due_date"),
   order: integer("order").notNull().default(0),
@@ -135,7 +139,7 @@ app.post("/api/teams", async (req, res) => {
   const slug = parsed.data.slug || parsed.data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const [existing] = await db.select().from(teams).where(eq(teams.slug, slug));
   if (existing) return res.status(409).json({ error: "Team slug already taken" });
-  const [team] = await db.insert(teams).values({ ...parsed.data, slug }).returning();
+  const [team] = await db.insert(teams).values({ ...parsed.data, slug, passkey: req.body.passkey || null }).returning();
   // Auto-create Misc project
   await db.insert(projects).values({ teamId: team.id, name: "Misc", color: "#6B7280" });
   if (req.body.founderName) {
@@ -158,7 +162,18 @@ app.post("/api/teams", async (req, res) => {
 app.get("/api/teams/:slug", async (req, res) => {
   const [team] = await db.select().from(teams).where(eq(teams.slug, req.params.slug));
   if (!team) return res.status(404).json({ error: "Team not found" });
-  res.json(team);
+  const { passkey, ...teamData } = team as any;
+  res.json({ ...teamData, hasPasskey: !!passkey });
+});
+
+app.post("/api/teams/:slug/join", async (req, res) => {
+  const [team] = await db.select().from(teams).where(eq(teams.slug, req.params.slug));
+  if (!team) return res.status(404).json({ error: "Team not found" });
+  if ((team as any).passkey && (team as any).passkey !== req.body.passkey) {
+    return res.status(403).json({ error: "Incorrect passkey" });
+  }
+  const { passkey, ...teamData } = team as any;
+  res.json(teamData);
 });
 
 // Delete team (creator only)

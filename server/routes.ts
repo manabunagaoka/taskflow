@@ -31,7 +31,7 @@ export async function registerRoutes(
       .replace(/^-|-$/g, "");
     const existing = await storage.getTeamBySlug(slug);
     if (existing) return res.status(409).json({ error: "Team slug already taken" });
-    const team = await storage.createTeam({ ...parsed.data, slug });
+    const team = await storage.createTeam({ ...parsed.data, slug, passkey: req.body.passkey || null });
     // Create founding member if provided
     // Auto-create Misc project
     await storage.createProject({ teamId: team.id, name: "Misc", color: "#6B7280" });
@@ -56,7 +56,19 @@ export async function registerRoutes(
   app.get("/api/teams/:slug", async (req, res) => {
     const team = await storage.getTeamBySlug(req.params.slug);
     if (!team) return res.status(404).json({ error: "Team not found" });
-    res.json(team);
+    // Don't expose passkey, but tell client if one is required
+    const { passkey, ...teamData } = team as any;
+    res.json({ ...teamData, hasPasskey: !!passkey });
+  });
+
+  app.post("/api/teams/:slug/join", async (req, res) => {
+    const team = await storage.getTeamBySlug(req.params.slug);
+    if (!team) return res.status(404).json({ error: "Team not found" });
+    if ((team as any).passkey && (team as any).passkey !== req.body.passkey) {
+      return res.status(403).json({ error: "Incorrect passkey" });
+    }
+    const { passkey, ...teamData } = team as any;
+    res.json(teamData);
   });
 
   // Delete team (creator only)

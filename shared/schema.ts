@@ -7,6 +7,7 @@ export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  passkey: text("passkey"),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -40,7 +41,9 @@ export const projects = pgTable("projects", {
   id: serial("id").primaryKey(),
   teamId: integer("team_id").notNull(),
   name: text("name").notNull(),
+  description: text("description"),
   color: text("color").notNull(),
+  ownerId: integer("owner_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -58,6 +61,7 @@ export const tasks = pgTable("tasks", {
   priority: text("priority").notNull().default("medium"),
   progress: integer("progress").notNull().default(0),
   assigneeId: integer("assignee_id"),
+  assigneeIds: text("assignee_ids"),
   projectId: integer("project_id"),
   dueDate: text("due_date"),
   order: integer("order").notNull().default(0),

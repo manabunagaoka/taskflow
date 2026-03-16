@@ -12,7 +12,10 @@ export default function Landing() {
   const [slug, setSlug] = useState("");
   const [founderName, setFounderName] = useState("");
   const [founderEmail, setFounderEmail] = useState("");
+  const [passkey, setPasskey] = useState("");
   const [joinSlug, setJoinSlug] = useState("");
+  const [joinPasskey, setJoinPasskey] = useState("");
+  const [needsPasskey, setNeedsPasskey] = useState(false);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
@@ -44,6 +47,7 @@ export default function Landing() {
         body: JSON.stringify({
           name: slugClean,
           slug: slugClean,
+          passkey: passkey.trim() || undefined,
           founderName: founderName.trim(),
           founderEmail: founderEmail.trim() || undefined,
         }),
@@ -68,10 +72,29 @@ export default function Landing() {
     setJoining(true);
     const clean = joinSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
     try {
-      const res = await fetch(`/api/teams/${clean}`);
-      if (!res.ok) {
+      // First check if team exists and needs passkey
+      const checkRes = await fetch(`/api/teams/${clean}`);
+      if (!checkRes.ok) {
         toast({ title: "Team not found", description: `No team called "${clean}" exists.`, variant: "destructive" });
         return;
+      }
+      const teamInfo = await checkRes.json();
+      if (teamInfo.hasPasskey && !needsPasskey) {
+        setNeedsPasskey(true);
+        return;
+      }
+      // If passkey required, verify it
+      if (teamInfo.hasPasskey) {
+        const joinRes = await fetch(`/api/teams/${clean}/join`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passkey: joinPasskey }),
+        });
+        if (!joinRes.ok) {
+          const data = await joinRes.json();
+          toast({ title: "Access denied", description: data.error || "Incorrect passkey", variant: "destructive" });
+          return;
+        }
       }
       navigate(`/t/${clean}`);
     } catch {
@@ -183,6 +206,17 @@ export default function Landing() {
                 value={founderEmail}
                 onChange={(e) => setFounderEmail(e.target.value)}
               />
+              <div>
+                <Input
+                  placeholder="Passkey (optional)"
+                  value={passkey}
+                  onChange={(e) => setPasskey(e.target.value)}
+                  maxLength={50}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Set a passkey to require it when others join your team.
+                </p>
+              </div>
               <Button type="submit" className="w-full" disabled={creating || slugClean.length < 2}>
                 {creating ? "Creating..." : "Create Team"}
               </Button>
@@ -196,17 +230,30 @@ export default function Landing() {
             <CardDescription>Enter the team name shared with you</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleJoin} className="flex gap-2">
-              <Input
-                placeholder="team-name"
-                value={joinSlug}
-                onChange={(e) => setJoinSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                className="font-mono"
-                required
-              />
-              <Button type="submit" variant="outline" disabled={joining}>
-                {joining ? "..." : "Join"}
-              </Button>
+            <form onSubmit={handleJoin} className="space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="team-name"
+                  value={joinSlug}
+                  onChange={(e) => { setJoinSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")); setNeedsPasskey(false); }}
+                  className="font-mono"
+                  required
+                />
+                <Button type="submit" variant="outline" disabled={joining}>
+                  {joining ? "..." : "Join"}
+                </Button>
+              </div>
+              {needsPasskey && (
+                <div>
+                  <Input
+                    placeholder="Enter passkey"
+                    value={joinPasskey}
+                    onChange={(e) => setJoinPasskey(e.target.value)}
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">This team requires a passkey to join.</p>
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
