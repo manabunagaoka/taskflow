@@ -80,14 +80,25 @@ const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+const projectFolders = pgTable("project_folders", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  projectId: integer("project_id").notNull(),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  provider: text("provider").notNull().default("link"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 const insertTeamSchema = createInsertSchema(teams).omit({ id: true, createdAt: true });
 const insertMemberSchema = createInsertSchema(members).omit({ id: true, createdAt: true });
 const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true });
 const insertTaskSchema = createInsertSchema(tasks).omit({ id: true, createdAt: true });
 const insertActivityLogSchema = createInsertSchema(activityLogs).omit({ id: true, createdAt: true });
 const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+const insertProjectFolderSchema = createInsertSchema(projectFolders).omit({ id: true, createdAt: true });
 
-const schema = { teams, members, projects, tasks, activityLogs, notifications };
+const schema = { teams, members, projects, tasks, activityLogs, notifications, projectFolders };
 
 // ─── Database ───
 const pool = new pg.Pool({
@@ -557,6 +568,61 @@ app.post(`${t}/import/excel`, resolveTeam, async (req, res) => {
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// ─── Team Rename ───
+app.patch(`${t}`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const { name } = req.body;
+  if (!name || typeof name !== "string" || !name.trim()) {
+    return res.status(400).json({ error: "Name is required" });
+  }
+  const newSlug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  if (newSlug !== team.slug) {
+    const [existing] = await db.select().from(teams).where(eq(teams.slug, newSlug));
+    if (existing) return res.status(409).json({ error: "This team name is already taken" });
+  }
+  const [updated] = await db.update(teams).set({ name: name.trim(), slug: newSlug }).where(eq(teams.id, team.id)).returning();
+  res.json(updated);
+});
+
+// ─── Project Folders ───
+app.get(`${t}/projects/:id/folders`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const projectId = parseInt(req.params.id);
+  if (isNaN(projectId)) return res.status(400).json({ error: "Invalid ID" });
+  const folders = await db.select().from(projectFolders).where(and(eq(projectFolders.teamId, team.id), eq(projectFolders.projectId, projectId))).orderBy(asc(projectFolders.createdAt));
+  res.json(folders);
+});
+
+app.post(`${t}/projects/:id/folders`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const projectId = parseInt(req.params.id);
+  if (isNaN(projectId)) return res.status(400).json({ error: "Invalid ID" });
+  const parsed = insertProjectFolderSchema.safeParse({ ...req.body, teamId: team.id, projectId });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  const [folder] = await db.insert(projectFolders).values(parsed.data).returning();
+  res.status(201).json(folder);
+});
+
+app.delete(`${t}/folders/:id`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+  const result = await db.delete(projectFolders).where(and(eq(projectFolders.id, id), eq(projectFolders.teamId, team.id))).returning();
+  if (result.length === 0) return res.status(404).json({ error: "Folder not found" });
+  res.status(204).send();
+});
+
+// ─── Task Reorder ───
+app.post(`${t}/tasks/reorder`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const { taskIds } = req.body;
+  if (!Array.isArray(taskIds)) return res.status(400).json({ error: "taskIds array required" });
+  for (let i = 0; i < taskIds.length; i++) {
+    await db.update(tasks).set({ order: i }).where(and(eq(tasks.id, taskIds[i]), eq(tasks.teamId, team.id)));
+  }
+  res.json({ success: true });
 });
 
 export default function handler(req: any, res: any) {

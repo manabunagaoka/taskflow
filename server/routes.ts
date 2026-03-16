@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage, logTaskChange } from "./storage";
-import { insertMemberSchema, insertProjectSchema, insertTaskSchema, insertTeamSchema } from "../shared/schema";
+import { insertMemberSchema, insertProjectSchema, insertTaskSchema, insertTeamSchema, insertProjectFolderSchema } from "../shared/schema";
 import XLSX from "xlsx";
 
 // Team limits
@@ -512,6 +512,59 @@ export async function registerRoutes(
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
+  });
+
+  // ─── Team Rename ───
+  app.patch(`${t}`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const { name } = req.body;
+    if (!name || typeof name !== "string" || !name.trim()) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+    const newSlug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    if (newSlug !== team.slug) {
+      const existing = await storage.getTeamBySlug(newSlug);
+      if (existing) return res.status(409).json({ error: "This team name is already taken" });
+    }
+    const updated = await storage.updateTeam(team.id, { name: name.trim(), slug: newSlug });
+    res.json(updated);
+  });
+
+  // ─── Project Folders ───
+  app.get(`${t}/projects/:id/folders`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const projectId = parseInt(req.params.id);
+    if (isNaN(projectId)) return res.status(400).json({ error: "Invalid ID" });
+    const folders = await storage.getProjectFolders(team.id, projectId);
+    res.json(folders);
+  });
+
+  app.post(`${t}/projects/:id/folders`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const projectId = parseInt(req.params.id);
+    if (isNaN(projectId)) return res.status(400).json({ error: "Invalid ID" });
+    const parsed = insertProjectFolderSchema.safeParse({ ...req.body, teamId: team.id, projectId });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    const folder = await storage.createProjectFolder(parsed.data);
+    res.status(201).json(folder);
+  });
+
+  app.delete(`${t}/folders/:id`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const ok = await storage.deleteProjectFolder(team.id, id);
+    if (!ok) return res.status(404).json({ error: "Folder not found" });
+    res.status(204).send();
+  });
+
+  // ─── Task Reorder ───
+  app.post(`${t}/tasks/reorder`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const { taskIds } = req.body;
+    if (!Array.isArray(taskIds)) return res.status(400).json({ error: "taskIds array required" });
+    await storage.reorderTasks(team.id, taskIds);
+    res.json({ success: true });
   });
 
   return httpServer;

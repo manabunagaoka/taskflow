@@ -1,13 +1,14 @@
 import { eq, asc, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  teams, members, projects, tasks, activityLogs, notifications,
+  teams, members, projects, tasks, activityLogs, notifications, projectFolders,
   type Team, type InsertTeam,
   type Member, type InsertMember,
   type Project, type InsertProject,
   type Task, type InsertTask,
   type ActivityLog, type InsertActivityLog,
   type Notification, type InsertNotification,
+  type ProjectFolder, type InsertProjectFolder,
 } from "../shared/schema";
 
 export interface IStorage {
@@ -55,6 +56,14 @@ export interface IStorage {
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationRead(teamId: number, id: number): Promise<void>;
   markAllNotificationsRead(teamId: number, recipientName: string): Promise<void>;
+
+  // Project Folders
+  getProjectFolders(teamId: number, projectId: number): Promise<ProjectFolder[]>;
+  createProjectFolder(folder: InsertProjectFolder): Promise<ProjectFolder>;
+  deleteProjectFolder(teamId: number, id: number): Promise<boolean>;
+
+  // Task reorder
+  reorderTasks(teamId: number, taskIds: number[]): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -78,6 +87,7 @@ export class DatabaseStorage implements IStorage {
     // Delete all team data first
     await db.delete(activityLogs).where(eq(activityLogs.teamId, id));
     await db.delete(notifications).where(eq(notifications.teamId, id));
+    await db.delete(projectFolders).where(eq(projectFolders.teamId, id));
     await db.delete(tasks).where(eq(tasks.teamId, id));
     await db.delete(members).where(eq(members.teamId, id));
     await db.delete(projects).where(eq(projects.teamId, id));
@@ -242,6 +252,28 @@ export class DatabaseStorage implements IStorage {
   async markAllNotificationsRead(teamId: number, recipientName: string): Promise<void> {
     await db.update(notifications).set({ read: "true" })
       .where(and(eq(notifications.teamId, teamId), eq(notifications.recipientName, recipientName)));
+  }
+
+  // Project Folders
+  async getProjectFolders(teamId: number, projectId: number): Promise<ProjectFolder[]> {
+    return db.select().from(projectFolders)
+      .where(and(eq(projectFolders.teamId, teamId), eq(projectFolders.projectId, projectId)))
+      .orderBy(asc(projectFolders.createdAt));
+  }
+  async createProjectFolder(folder: InsertProjectFolder): Promise<ProjectFolder> {
+    const [created] = await db.insert(projectFolders).values(folder).returning();
+    return created;
+  }
+  async deleteProjectFolder(teamId: number, id: number): Promise<boolean> {
+    const result = await db.delete(projectFolders).where(and(eq(projectFolders.id, id), eq(projectFolders.teamId, teamId))).returning();
+    return result.length > 0;
+  }
+
+  // Task reorder
+  async reorderTasks(teamId: number, taskIds: number[]): Promise<void> {
+    for (let i = 0; i < taskIds.length; i++) {
+      await db.update(tasks).set({ order: i }).where(and(eq(tasks.id, taskIds[i]), eq(tasks.teamId, teamId)));
+    }
   }
 }
 

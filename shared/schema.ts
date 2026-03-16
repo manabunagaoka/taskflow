@@ -99,3 +99,18 @@ export const notifications = pgTable("notifications", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+
+// Project Folders (external links)
+export const projectFolders = pgTable("project_folders", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  projectId: integer("project_id").notNull(),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  provider: text("provider").notNull().default("link"), // "onedrive", "gdrive", "dropbox", "sharepoint", "link"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertProjectFolderSchema = createInsertSchema(projectFolders).omit({ id: true, createdAt: true });
+export type InsertProjectFolder = z.infer<typeof insertProjectFolderSchema>;
+export type ProjectFolder = typeof projectFolders.$inferSelect;
