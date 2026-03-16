@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { UserSelector } from "@/components/user-selector";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { useTheme } from "@/components/theme-provider";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -102,7 +102,11 @@ export default function Workspace() {
   const [passkeyDialogOpen, setPasskeyDialogOpen] = useState(false);
   const [newPasskey, setNewPasskey] = useState("");
 
-  // Contact Admin dialog
+  // Settings dialog
+  const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+
+  // Contact Admin form (inside settings)
   const [contactAdminOpen, setContactAdminOpen] = useState(false);
   const [contactName, setContactName] = useState("");
   const [contactOrg, setContactOrg] = useState("");
@@ -1055,7 +1059,9 @@ export default function Workspace() {
         <div className="flex items-center gap-2 ml-auto shrink-0">
           <UserSelector />
           <NotificationBell />
-          <ThemeToggle />
+          <Button size="icon" variant="ghost" onClick={() => setSettingsDialogOpen(true)} aria-label="Settings">
+            <Settings className="h-4 w-4" />
+          </Button>
         </div>
       </header>
 
@@ -1236,15 +1242,7 @@ export default function Workspace() {
               >
                 <KeyRound className="h-3 w-3" /><span>{teamInfo?.hasPasskey ? "Change Passkey" : "Set Passkey"}</span>
               </button>
-              <button
-                onClick={() => {
-                  setContactName(""); setContactOrg(""); setContactTeamName(teamName || teamSlug);
-                  setContactEmail(""); setContactMessage(""); setContactAdminOpen(true);
-                }}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Mail className="h-3 w-3" /><span>Contact Admin</span>
-              </button>
+
               {(() => {
                 const owner = teamInfo?.createdBy ? members.find(m => m.id === teamInfo.createdBy) : null;
                 if (owner?.email) {
@@ -1350,54 +1348,82 @@ export default function Workspace() {
         </DialogContent>
       </Dialog>
 
-      {/* ===== CONTACT ADMIN DIALOG ===== */}
-      <Dialog open={contactAdminOpen} onOpenChange={setContactAdminOpen}>
+      {/* ===== SETTINGS DIALOG ===== */}
+      <Dialog open={settingsDialogOpen} onOpenChange={(open) => { setSettingsDialogOpen(open); if (!open) setContactAdminOpen(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Mail className="h-4 w-4" />
-              Contact Admin
+              <Settings className="h-4 w-4" />
+              Settings
             </DialogTitle>
-            <DialogDescription>Send a message to the TaskFlow administrator.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            if (!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()) return;
-            const subject = encodeURIComponent(`TaskFlow Contact: ${contactTeamName || "General"}`);
-            const body = encodeURIComponent(
-              `Name: ${contactName.trim()}\nOrganization: ${contactOrg.trim() || "N/A"}\nTeam: ${contactTeamName.trim() || "N/A"}\nEmail: ${contactEmail.trim()}\n\nMessage:\n${contactMessage.trim()}`
-            );
-            // TODO: wire up to platform email when published on manaboodle.com
-            toast({ title: "Message composed", description: "Contact form will be connected soon." });
-            setContactAdminOpen(false);
-          }} className="space-y-3">
-            <div>
-              <Label>Name <span className="text-destructive">*</span></Label>
-              <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Your name" required />
-            </div>
-            <div>
-              <Label>Organization</Label>
-              <Input value={contactOrg} onChange={(e) => setContactOrg(e.target.value)} placeholder="Your organization (optional)" />
-            </div>
-            <div>
-              <Label>Team Name</Label>
-              <Input value={contactTeamName} onChange={(e) => setContactTeamName(e.target.value)} placeholder="Team name" />
-            </div>
-            <div>
-              <Label>Email <span className="text-destructive">*</span></Label>
-              <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="your@email.com" required />
-            </div>
-            <div>
-              <Label>Message <span className="text-destructive">*</span></Label>
-              <Textarea value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} placeholder="How can we help?" rows={4} required />
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setContactAdminOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()}>
-                <Mail className="h-3.5 w-3.5 mr-1" />Send
+          <div className="space-y-4">
+            {/* Appearance */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Appearance</p>
+                <p className="text-xs text-muted-foreground">Switch between light and dark mode</p>
+              </div>
+              <Button size="sm" variant="outline" onClick={toggleTheme}>
+                {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
               </Button>
-            </DialogFooter>
-          </form>
+            </div>
+
+            <div className="border-t" />
+
+            {/* Contact Admin */}
+            {!contactAdminOpen ? (
+              <button
+                onClick={() => {
+                  setContactName(""); setContactOrg(""); setContactTeamName(teamName || teamSlug);
+                  setContactEmail(""); setContactMessage(""); setContactAdminOpen(true);
+                }}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors w-full"
+              >
+                <Mail className="h-4 w-4" />
+                <div className="text-left">
+                  <p className="font-medium">Contact Admin</p>
+                  <p className="text-xs">Send a message to the TaskFlow administrator</p>
+                </div>
+              </button>
+            ) : (
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                if (!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()) return;
+                // TODO: wire up to platform email when published on manaboodle.com
+                toast({ title: "Message composed", description: "Contact form will be connected soon." });
+                setContactAdminOpen(false);
+              }} className="space-y-3">
+                <p className="text-sm font-medium flex items-center gap-2"><Mail className="h-4 w-4" /> Contact Admin</p>
+                <div>
+                  <Label>Name <span className="text-destructive">*</span></Label>
+                  <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="Your name" required />
+                </div>
+                <div>
+                  <Label>Organization</Label>
+                  <Input value={contactOrg} onChange={(e) => setContactOrg(e.target.value)} placeholder="Your organization (optional)" />
+                </div>
+                <div>
+                  <Label>Team Name</Label>
+                  <Input value={contactTeamName} onChange={(e) => setContactTeamName(e.target.value)} placeholder="Team name" />
+                </div>
+                <div>
+                  <Label>Email <span className="text-destructive">*</span></Label>
+                  <Input type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="your@email.com" required />
+                </div>
+                <div>
+                  <Label>Message <span className="text-destructive">*</span></Label>
+                  <Textarea value={contactMessage} onChange={(e) => setContactMessage(e.target.value)} placeholder="How can we help?" rows={4} required />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setContactAdminOpen(false)}>Cancel</Button>
+                  <Button type="submit" size="sm" disabled={!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()}>
+                    <Mail className="h-3.5 w-3.5 mr-1" />Send
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
