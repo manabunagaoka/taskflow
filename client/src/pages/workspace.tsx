@@ -64,6 +64,7 @@ export default function Workspace() {
   const [projectColor, setProjectColor] = useState(PROJECT_COLORS[0]);
 
   const [addingTask, setAddingTask] = useState(false);
+  const [addingNote, setAddingNote] = useState(false);
 
   const [teamDialogOpen, setTeamDialogOpen] = useState(false);
   const [memberDialogOpen, setMemberDialogOpen] = useState(false);
@@ -338,7 +339,7 @@ export default function Workspace() {
 
   const ProjectsColumn = (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b">
+      <div className="h-10 flex items-center justify-center border-b shrink-0">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Projects</span>
       </div>
       <ScrollArea className="flex-1">
@@ -387,9 +388,9 @@ export default function Workspace() {
 
   const TasksColumn = (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b flex items-center gap-2">
+      <div className="h-10 flex items-center justify-center border-b shrink-0 relative">
         {isMobile && (
-          <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setMobileView("projects")}>
+          <Button size="icon" variant="ghost" className="h-6 w-6 absolute left-2" onClick={() => setMobileView("projects")}>
             <ArrowLeft className="h-3.5 w-3.5" />
           </Button>
         )}
@@ -469,9 +470,9 @@ export default function Workspace() {
 
   const DetailsColumn = (
     <div className="flex flex-col h-full">
-      <div className="px-3 py-2 border-b flex items-center gap-2">
+      <div className="h-10 flex items-center justify-center border-b shrink-0 relative">
         {isMobile && (
-          <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0" onClick={() => setMobileView("tasks")}>
+          <Button size="icon" variant="ghost" className="h-6 w-6 absolute left-2" onClick={() => setMobileView("tasks")}>
             <ArrowLeft className="h-3.5 w-3.5" />
           </Button>
         )}
@@ -571,20 +572,24 @@ export default function Workspace() {
               <div>
                 <Label className="text-xs text-muted-foreground">Status</Label>
                 <Select
-                  value={selectedTask.status}
+                  value={String(selectedTask.progress)}
                   onValueChange={(v) => {
-                    const progress = v === "done" ? 100 : (selectedTask.progress === 100 && v !== "done" ? 50 : selectedTask.progress);
-                    updateTask.mutate({ id: selectedTask.id, status: v, progress });
+                    const pct = parseInt(v);
+                    const status = pct === 0 ? "todo" : pct === 100 ? "done" : "in_progress";
+                    updateTask.mutate({ id: selectedTask.id, progress: pct, status });
                   }}
                 >
                   <SelectTrigger className="mt-1 h-8 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todo">To Do</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="review">Review</SelectItem>
-                    <SelectItem value="done">✅ Done</SelectItem>
+                    <SelectItem value="0">0% — Not Started</SelectItem>
+                    <SelectItem value="10">10%</SelectItem>
+                    <SelectItem value="25">25%</SelectItem>
+                    <SelectItem value="50">50%</SelectItem>
+                    <SelectItem value="75">75%</SelectItem>
+                    <SelectItem value="90">90%</SelectItem>
+                    <SelectItem value="100">100% — Done ✅</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -605,10 +610,68 @@ export default function Workspace() {
               />
             </div>
 
-            {/* Activity feed */}
+            {/* Activity / Progress Notes */}
             <div className="border-t pt-3">
-              <Label className="text-xs text-muted-foreground font-semibold">Activity</Label>
-              <div className="mt-2 space-y-2.5 max-h-[200px] overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-xs text-muted-foreground font-semibold">Activity</Label>
+                {!addingNote && (
+                  <button
+                    onClick={() => setAddingNote(true)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>Activity Note</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Inline note input */}
+              {addingNote && (
+                <div className="relative mb-3">
+                  <div className="flex gap-2">
+                    <Input
+                      ref={commentRef}
+                      value={comment}
+                      onChange={(e) => handleCommentChange(e.target.value)}
+                      placeholder="Add a note... (@ to mention)"
+                      className="flex-1 text-sm h-8"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey && comment.trim()) {
+                          e.preventDefault();
+                          addComment.mutate();
+                          setAddingNote(false);
+                        }
+                        if (e.key === "Escape") { setAddingNote(false); setComment(""); }
+                      }}
+                    />
+                    <Button
+                      size="sm" variant="secondary" className="h-8 w-8 p-0"
+                      onClick={() => { if (comment.trim()) { addComment.mutate(); setAddingNote(false); } }}
+                      disabled={!comment.trim() || addComment.isPending}
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  {showMentions && filteredMentionMembers.length > 0 && (
+                    <div className="absolute bottom-full mb-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
+                      {filteredMentionMembers.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+                          onClick={() => insertMention(m.name)}
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Activity feed */}
+              <div className="space-y-2.5 overflow-y-auto" style={{ maxHeight: "calc(100vh - 480px)" }}>
                 {activityLogs.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-3">No activity yet</p>
                 ) : (
@@ -625,46 +688,6 @@ export default function Workspace() {
                       </div>
                     </div>
                   ))
-                )}
-              </div>
-
-              {/* Comment input */}
-              <div className="relative mt-2">
-                <div className="flex gap-2">
-                  <Input
-                    ref={commentRef}
-                    value={comment}
-                    onChange={(e) => handleCommentChange(e.target.value)}
-                    placeholder="Comment... (@ to mention)"
-                    className="flex-1 text-sm h-8"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey && comment.trim()) {
-                        e.preventDefault();
-                        addComment.mutate();
-                      }
-                    }}
-                  />
-                  <Button
-                    size="sm" variant="secondary" className="h-8 w-8 p-0"
-                    onClick={() => comment.trim() && addComment.mutate()}
-                    disabled={!comment.trim() || addComment.isPending}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                {showMentions && filteredMentionMembers.length > 0 && (
-                  <div className="absolute bottom-full mb-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
-                    {filteredMentionMembers.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
-                        onClick={() => insertMention(m.name)}
-                      >
-                        {m.name}
-                      </button>
-                    ))}
-                  </div>
                 )}
               </div>
             </div>
@@ -709,23 +732,21 @@ export default function Workspace() {
           {mobileView === "details" && DetailsColumn}
         </div>
       ) : (
-        /* Desktop: resizable 3-column layout, centered with max-width */
-        <div className="flex-1 overflow-hidden flex justify-center">
-          <div className="w-full max-w-7xl h-full border-x">
-            <ResizablePanelGroup direction="horizontal" className="h-full">
-              <ResizablePanel defaultSize={18} minSize={12} maxSize={30}>
-                {ProjectsColumn}
-              </ResizablePanel>
-              <ResizableHandle />
-              <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
-                {TasksColumn}
-              </ResizablePanel>
-              <ResizableHandle />
-              <ResizablePanel defaultSize={57} minSize={30}>
-                {DetailsColumn}
-              </ResizablePanel>
-            </ResizablePanelGroup>
-          </div>
+        /* Desktop: resizable 3-column layout, full width */
+        <div className="flex-1 overflow-hidden">
+          <ResizablePanelGroup direction="horizontal" className="h-full">
+            <ResizablePanel defaultSize={18} minSize={12} maxSize={30}>
+              {ProjectsColumn}
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel defaultSize={25} minSize={15} maxSize={40}>
+              {TasksColumn}
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel defaultSize={57} minSize={30}>
+              {DetailsColumn}
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
       )}
 
