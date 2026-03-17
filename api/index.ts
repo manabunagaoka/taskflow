@@ -311,6 +311,17 @@ app.delete(`${t}/members/:id`, resolveTeam, async (req, res) => {
   if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
   const [deleted] = await db.delete(members).where(and(eq(members.id, id), eq(members.teamId, team.id))).returning();
   if (!deleted) return res.status(404).json({ error: "Not found" });
+  // Auto-delete team when last member leaves
+  const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(members).where(eq(members.teamId, team.id));
+  if (count === 0) {
+    await db.delete(activityLogs).where(eq(activityLogs.teamId, team.id));
+    await db.delete(notifications).where(eq(notifications.teamId, team.id));
+    await db.delete(projectFolders).where(eq(projectFolders.teamId, team.id));
+    await db.delete(tasks).where(eq(tasks.teamId, team.id));
+    await db.delete(projects).where(eq(projects.teamId, team.id));
+    await db.delete(teams).where(eq(teams.id, team.id));
+    return res.json({ teamDeleted: true });
+  }
   res.status(204).send();
 });
 

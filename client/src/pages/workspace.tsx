@@ -1292,22 +1292,55 @@ export default function Workspace() {
             <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => { setTeamDialogOpen(false); navigate("/"); }}>
               <LogOut className="h-3 w-3 mr-1" />Switch Team
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs text-destructive hover:text-destructive"
-              onClick={() => {
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  const me = members.find((m) => m.name === currentUser);
+                  if (!me) { toast({ title: "Select yourself first", description: "Use the user selector to pick your profile.", variant: "destructive" }); return; }
+                  if (confirm("Leave this team? Your profile will be removed. If you're the last member, the team will also be deleted.")) {
+                    deleteMember.mutate(me.id, {
+                      onSuccess: () => { setTeamDialogOpen(false); navigate("/"); },
+                    });
+                  }
+                }}
+              >
+                <LogOut className="h-3 w-3 mr-1" />Leave
+              </Button>
+              {(() => {
                 const me = members.find((m) => m.name === currentUser);
-                if (!me) { toast({ title: "Select yourself first", description: "Use the user selector to pick your profile.", variant: "destructive" }); return; }
-                if (confirm("Leave this team? Your profile and data will be removed. This cannot be undone.")) {
-                  deleteMember.mutate(me.id, {
-                    onSuccess: () => { setTeamDialogOpen(false); navigate("/"); },
-                  });
+                if (me && teamInfo?.createdBy === me.id) {
+                  return (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs text-destructive hover:text-destructive"
+                      onClick={() => {
+                        if (confirm("Delete this team and ALL its data (projects, tasks, members)? This cannot be undone.")) {
+                          fetch(`${apiBase}`, {
+                            method: "DELETE",
+                            headers: { "x-member-id": String(me.id) },
+                          }).then((res) => {
+                            if (res.ok) {
+                              toast({ title: "Team deleted" });
+                              setTeamDialogOpen(false);
+                              navigate("/");
+                            } else {
+                              toast({ title: "Failed to delete team", variant: "destructive" });
+                            }
+                          });
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />Delete Team
+                    </Button>
+                  );
                 }
-              }}
-            >
-              <Trash2 className="h-3 w-3 mr-1" />Leave Team
-            </Button>
+                return null;
+              })()}
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

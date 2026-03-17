@@ -186,6 +186,12 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
     const ok = await storage.deleteMember(team.id, id);
     if (!ok) return res.status(404).json({ error: "Member not found" });
+    // Auto-delete team when last member leaves
+    const remaining = await storage.countMembers(team.id);
+    if (remaining === 0) {
+      await storage.deleteTeam(team.id);
+      return res.json({ teamDeleted: true });
+    }
     res.status(204).send();
   });
 
