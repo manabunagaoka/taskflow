@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -217,6 +217,17 @@ export default function Admin() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-2">
+          <p className="text-muted-foreground">Failed to load teams.</p>
+          <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["admin", "teams"] })}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="flex items-center justify-between px-6 py-3 border-b">
@@ -258,8 +269,8 @@ export default function Admin() {
                 </TableHeader>
                 <TableBody>
                   {teams?.map((team) => (
-                    <>
-                      <TableRow key={team.id} className="cursor-pointer" onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)}>
+                    <Fragment key={team.id}>
+                      <TableRow className="cursor-pointer" onClick={() => setExpandedTeam(expandedTeam === team.id ? null : team.id)}>
                         <TableCell className="font-mono text-xs">
                           <div className="flex items-center gap-1">
                             {expandedTeam === team.id ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -306,7 +317,7 @@ export default function Admin() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>

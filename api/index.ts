@@ -213,6 +213,7 @@ app.delete("/api/admin/:key/teams/:id", async (req, res) => {
   if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
   await db.delete(activityLogs).where(eq(activityLogs.teamId, id));
   await db.delete(notifications).where(eq(notifications.teamId, id));
+  await db.delete(projectFolders).where(eq(projectFolders.teamId, id));
   await db.delete(tasks).where(eq(tasks.teamId, id));
   await db.delete(members).where(eq(members.teamId, id));
   await db.delete(projects).where(eq(projects.teamId, id));
