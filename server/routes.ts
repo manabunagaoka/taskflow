@@ -127,6 +127,30 @@ export async function registerRoutes(
     if (!ok) return res.status(404).json({ error: "Member not found" });
     res.status(204).send();
   });
+
+  // Admin: add member
+  app.post("/api/admin/:key/teams/:id/members", async (req, res) => {
+    const adminKey = process.env.ADMIN_KEY;
+    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
+    const teamId = parseInt(req.params.id);
+    if (isNaN(teamId)) return res.status(400).json({ error: "Invalid ID" });
+    const parsed = insertMemberSchema.safeParse({ ...req.body, teamId });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+    const member = await storage.createMember(parsed.data);
+    res.status(201).json(member);
+  });
+
+  // Admin: edit member
+  app.patch("/api/admin/:key/teams/:teamId/members/:memberId", async (req, res) => {
+    const adminKey = process.env.ADMIN_KEY;
+    if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
+    const teamId = parseInt(req.params.teamId);
+    const memberId = parseInt(req.params.memberId);
+    if (isNaN(teamId) || isNaN(memberId)) return res.status(400).json({ error: "Invalid ID" });
+    const updated = await storage.updateMember(teamId, memberId, req.body);
+    if (!updated) return res.status(404).json({ error: "Member not found" });
+    res.json(updated);
+  });
   // ─── All team-scoped routes ───
   const t = "/api/t/:teamSlug";
 

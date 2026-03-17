@@ -1288,9 +1288,25 @@ export default function Workspace() {
               </div>
             ))}
           </div>
-          <DialogFooter>
+          <DialogFooter className="flex justify-between sm:justify-between">
             <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => { setTeamDialogOpen(false); navigate("/"); }}>
               <LogOut className="h-3 w-3 mr-1" />Switch Team
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-destructive hover:text-destructive"
+              onClick={() => {
+                const me = members.find((m) => m.name === currentUser);
+                if (!me) { toast({ title: "Select yourself first", description: "Use the user selector to pick your profile.", variant: "destructive" }); return; }
+                if (confirm("Leave this team? Your profile and data will be removed. This cannot be undone.")) {
+                  deleteMember.mutate(me.id, {
+                    onSuccess: () => { setTeamDialogOpen(false); navigate("/"); },
+                  });
+                }
+              }}
+            >
+              <Trash2 className="h-3 w-3 mr-1" />Leave Team
             </Button>
           </DialogFooter>
         </DialogContent>

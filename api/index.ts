@@ -243,6 +243,39 @@ app.delete("/api/admin/:key/teams/:teamId/members/:memberId", async (req, res) =
   res.status(204).send();
 });
 
+// Admin: add member
+app.post("/api/admin/:key/teams/:id/members", async (req, res) => {
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
+  const teamId = parseInt(req.params.id);
+  if (isNaN(teamId)) return res.status(400).json({ error: "Invalid ID" });
+  const parsed = insertMemberSchema.safeParse({ ...req.body, teamId });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  const [member] = await db.insert(members).values(parsed.data).returning();
+  res.status(201).json(member);
+});
+
+// Admin: edit member
+app.patch("/api/admin/:key/teams/:teamId/members/:memberId", async (req, res) => {
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || req.params.key !== adminKey) return res.status(403).json({ error: "Forbidden" });
+  const teamId = parseInt(req.params.teamId);
+  const memberId = parseInt(req.params.memberId);
+  if (isNaN(teamId) || isNaN(memberId)) return res.status(400).json({ error: "Invalid ID" });
+  const { name, role, email, phone, color, type } = req.body;
+  const updates: Record<string, any> = {};
+  if (name !== undefined) updates.name = name;
+  if (role !== undefined) updates.role = role;
+  if (email !== undefined) updates.email = email || null;
+  if (phone !== undefined) updates.phone = phone || null;
+  if (color !== undefined) updates.color = color;
+  if (type !== undefined) updates.type = type;
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No fields to update" });
+  const [updated] = await db.update(members).set(updates).where(and(eq(members.id, memberId), eq(members.teamId, teamId))).returning();
+  if (!updated) return res.status(404).json({ error: "Member not found" });
+  res.json(updated);
+});
+
 // ─── Team-scoped routes ───
 const t = "/api/t/:teamSlug";
 
