@@ -19,7 +19,7 @@ import {
   Plus, Trash2, Users, Pencil, Bot, Send, ExternalLink,
   MessageSquare, RefreshCw, AlertTriangle, FolderOpen,
   LogOut, CheckCircle2, ArrowLeft, Filter, GripVertical,
-  AlertCircle, Mail, KeyRound, Settings, ArrowUpDown, Repeat,
+  AlertCircle, Mail, KeyRound, Settings, ArrowUpDown, Repeat, Clock,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { UserSelector } from "@/components/user-selector";
@@ -689,6 +689,10 @@ export default function Workspace() {
                     const isDone = t.status === "done";
                     const selected = selectedTaskId === t.id;
                     const isOverdue = t.dueDate && !isDone && isPast(parseISO(t.dueDate)) && !isToday(parseISO(t.dueDate));
+                    const isDueSoon = t.dueDate && !isDone && !isOverdue && (() => {
+                      const days = differenceInDays(parseISO(t.dueDate!), new Date());
+                      return days >= 0 && days <= 3;
+                    })();
 
                     if (isDone) {
                       return (
@@ -733,7 +737,9 @@ export default function Workspace() {
                               t.priority === "high" ? "bg-red-500" : t.priority === "medium" ? "bg-amber-500" : "bg-emerald-500"
                             }`} />
                             <span className="text-sm flex-1 truncate">{t.title}</span>
+                            {(t as any).recurring === "daily" && <Repeat className="h-3 w-3 text-muted-foreground shrink-0" />}
                             {isOverdue && <AlertTriangle className="h-3 w-3 text-red-500 shrink-0" />}
+                            {isDueSoon && !isOverdue && <Clock className="h-3 w-3 text-amber-500 shrink-0" />}
                             <div className="flex -space-x-1.5 shrink-0">
                               {assignees.slice(0, 3).map((a) => (
                                 <Avatar key={a.id} className="h-5 w-5 ring-1 ring-background">
@@ -965,11 +971,12 @@ export default function Workspace() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Due Date</Label>
+                <Label className={`text-xs ${(selectedTask as any).recurring === "daily" ? "text-muted-foreground/50" : "text-muted-foreground"}`}>Due Date</Label>
                 <Input
                   type="date"
-                  className="mt-1 h-8 text-sm"
+                  className={`mt-1 h-8 text-sm ${(selectedTask as any).recurring === "daily" ? "opacity-40 pointer-events-none" : ""}`}
                   value={selectedTask.dueDate || ""}
+                  disabled={(selectedTask as any).recurring === "daily"}
                   onChange={(e) => updateTask.mutate({ id: selectedTask.id, dueDate: e.target.value || null })}
                 />
               </div>
