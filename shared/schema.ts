@@ -44,6 +44,7 @@ export const projects = pgTable("projects", {
   description: text("description"),
   color: text("color").notNull(),
   ownerId: integer("owner_id"),
+  displayOrder: integer("display_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -64,6 +65,7 @@ export const tasks = pgTable("tasks", {
   assigneeIds: text("assignee_ids"),
   projectId: integer("project_id"),
   dueDate: text("due_date"),
+  recurring: text("recurring").notNull().default("none"),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

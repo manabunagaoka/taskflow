@@ -64,6 +64,9 @@ export interface IStorage {
 
   // Task reorder
   reorderTasks(teamId: number, taskIds: number[]): Promise<void>;
+
+  // Project reorder
+  reorderProjects(teamId: number, projectIds: number[]): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -273,6 +276,13 @@ export class DatabaseStorage implements IStorage {
   async reorderTasks(teamId: number, taskIds: number[]): Promise<void> {
     for (let i = 0; i < taskIds.length; i++) {
       await db.update(tasks).set({ order: i }).where(and(eq(tasks.id, taskIds[i]), eq(tasks.teamId, teamId)));
+    }
+  }
+
+  // Project reorder
+  async reorderProjects(teamId: number, projectIds: number[]): Promise<void> {
+    for (let i = 0; i < projectIds.length; i++) {
+      await db.update(projects).set({ displayOrder: i }).where(and(eq(projects.id, projectIds[i]), eq(projects.teamId, teamId)));
     }
   }
 }

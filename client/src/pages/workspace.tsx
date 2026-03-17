@@ -19,7 +19,7 @@ import {
   Plus, Trash2, Users, Pencil, Bot, Send, ExternalLink,
   MessageSquare, RefreshCw, AlertTriangle, FolderOpen,
   LogOut, CheckCircle2, ArrowLeft, Filter, GripVertical,
-  AlertCircle, Mail, KeyRound, Settings,
+  AlertCircle, Mail, KeyRound, Settings, ArrowUpDown, Repeat,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { UserSelector } from "@/components/user-selector";
@@ -123,6 +123,9 @@ export default function Workspace() {
   // Task filter
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
 
+  // Project sort
+  const [projectSort, setProjectSort] = useState<"manual" | "alpha-asc" | "alpha-desc" | "owner">("manual");
+
   // Local editing state
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -193,8 +196,17 @@ export default function Workspace() {
       const pTasks = tasks.filter((t) => t.projectId === p.id);
       return pTasks.length > 0 && pTasks.every((t) => t.status === "done");
     });
-    return [...active, ...completed];
-  }, [projects, tasks]);
+
+    const sortList = (list: Project[]) => {
+      if (projectSort === "alpha-asc") return [...list].sort((a, b) => a.name.localeCompare(b.name));
+      if (projectSort === "alpha-desc") return [...list].sort((a, b) => b.name.localeCompare(a.name));
+      if (projectSort === "owner") return [...list].sort((a, b) => ((a as any).ownerId || 0) - ((b as any).ownerId || 0));
+      // manual: sort by displayOrder
+      return [...list].sort((a, b) => ((a as any).displayOrder || 0) - ((b as any).displayOrder || 0));
+    };
+
+    return [...sortList(active), ...sortList(completed)];
+  }, [projects, tasks, projectSort]);
 
   const { data: activityLogs = [] } = useQuery<any[]>({
     queryKey: [`${apiBase}/tasks/${selectedTaskId}/activity`],
@@ -292,6 +304,15 @@ export default function Workspace() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks`] });
+    },
+  });
+
+  const reorderProjects = useMutation({
+    mutationFn: async (projectIds: number[]) => {
+      await apiRequest("POST", `${apiBase}/projects/reorder`, { projectIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`${apiBase}/projects`] });
     },
   });
 
@@ -494,6 +515,24 @@ export default function Workspace() {
     reorderTasks.mutate(allIds);
   };
 
+  // Drag-and-drop handler for projects
+  const handleProjectDragEnd = (result: DropResult) => {
+    if (!result.destination || projectSort !== "manual") return;
+    const { source, destination } = result;
+    if (source.index === destination.index) return;
+
+    const activeProjects = sortedProjects.filter(p => !isProjectComplete(p));
+    if (source.index >= activeProjects.length || destination.index >= activeProjects.length) return;
+
+    const reordered = [...activeProjects];
+    const [moved] = reordered.splice(source.index, 1);
+    reordered.splice(destination.index, 0, moved);
+
+    const completedProjects = sortedProjects.filter(p => isProjectComplete(p));
+    const allIds = [...reordered, ...completedProjects].map(p => p.id);
+    reorderProjects.mutate(allIds);
+  };
+
   // Active filter count
   const activeFilterCount = useMemo(() => {
     if (!selectedProjectId) return { high: 0, overdue: 0 };
@@ -507,48 +546,102 @@ export default function Workspace() {
 
   const ProjectsColumn = (
     <div className="flex flex-col h-full">
-      <div className="h-10 flex items-center justify-center border-b shrink-0">
+      <div className="h-10 flex items-center justify-center border-b shrink-0 relative">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Projects</span>
+        <div className="absolute right-2">
+          <Select value={projectSort} onValueChange={(v) => setProjectSort(v as any)}>
+            <SelectTrigger className={`h-7 px-2 gap-1 text-xs border rounded-md shadow-sm ${projectSort !== "manual" ? "border-primary text-primary bg-primary/5" : "border-border text-muted-foreground"}`}>
+              <ArrowUpDown className="h-3 w-3" />
+              <span className="hidden sm:inline">{projectSort === "manual" ? "Sort" : projectSort === "alpha-asc" ? "A→Z" : projectSort === "alpha-desc" ? "Z→A" : "Owner"}</span>
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="manual">Manual Order</SelectItem>
+              <SelectItem value="alpha-asc">A → Z</SelectItem>
+              <SelectItem value="alpha-desc">Z → A</SelectItem>
+              <SelectItem value="owner">By Owner</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
       <ScrollArea className="flex-1">
-        <div className="py-1">
-          {sortedProjects.map((p) => {
-            const complete = isProjectComplete(p);
-            const selected = selectedProjectId === p.id;
-            const pTasks = tasks.filter((t) => t.projectId === p.id);
-            const doneTasks = pTasks.filter((t) => t.status === "done").length;
-            return (
-              <div
-                key={p.id}
-                className={`group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${
-                  selected ? "bg-accent" : "hover:bg-accent/50"
-                } ${complete ? "opacity-50" : ""}`}
-                onClick={() => selectProject(p.id)}
-              >
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                <span className={`text-sm flex-1 truncate ${complete ? "line-through" : ""}`}>{p.name}</span>
-                {complete && <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />}
-                {!complete && pTasks.length > 0 && (
-                  <span className="text-[10px] text-muted-foreground shrink-0">{doneTasks}/{pTasks.length}</span>
-                )}
-                <Button
-                  size="icon" variant="ghost"
-                  className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0"
-                  onClick={(e) => { e.stopPropagation(); openEditProject(p); }}
+        <DragDropContext onDragEnd={handleProjectDragEnd}>
+          <Droppable droppableId="projects">
+            {(droppableProvided) => (
+              <div className="py-1" ref={droppableProvided.innerRef} {...droppableProvided.droppableProps}>
+                {sortedProjects.map((p, index) => {
+                  const complete = isProjectComplete(p);
+                  const selected = selectedProjectId === p.id;
+                  const pTasks = tasks.filter((t) => t.projectId === p.id);
+                  const doneTasks = pTasks.filter((t) => t.status === "done").length;
+
+                  if (complete) {
+                    return (
+                      <div
+                        key={p.id}
+                        className={`group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors opacity-50 ${
+                          selected ? "bg-accent" : "hover:bg-accent/50"
+                        }`}
+                        onClick={() => selectProject(p.id)}
+                      >
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                        <span className="text-sm flex-1 truncate line-through">{p.name}</span>
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                        <Button
+                          size="icon" variant="ghost"
+                          className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0"
+                          onClick={(e) => { e.stopPropagation(); openEditProject(p); }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <Draggable key={p.id} draggableId={`project-${p.id}`} index={index} isDragDisabled={projectSort !== "manual"}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          className={`group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${
+                            selected ? "bg-accent" : "hover:bg-accent/50"
+                          } ${snapshot.isDragging ? "bg-accent shadow-md rounded" : ""}`}
+                          onClick={() => selectProject(p.id)}
+                        >
+                          {projectSort === "manual" && (
+                            <div {...provided.dragHandleProps} className="shrink-0 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-50">
+                              <GripVertical className="h-3 w-3" />
+                            </div>
+                          )}
+                          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                          <span className="text-sm flex-1 truncate">{p.name}</span>
+                          {pTasks.length > 0 && (
+                            <span className="text-[10px] text-muted-foreground shrink-0">{doneTasks}/{pTasks.length}</span>
+                          )}
+                          <Button
+                            size="icon" variant="ghost"
+                            className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0"
+                            onClick={(e) => { e.stopPropagation(); openEditProject(p); }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </Draggable>
+                  );
+                })}
+                {droppableProvided.placeholder}
+                <button
+                  onClick={openNewProject}
+                  className="flex items-center gap-2 px-3 py-2 w-full text-left text-sm text-muted-foreground hover:bg-accent/50 transition-colors"
                 >
-                  <Pencil className="h-3 w-3" />
-                </Button>
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Add Project</span>
+                </button>
               </div>
-            );
-          })}
-          <button
-            onClick={openNewProject}
-            className="flex items-center gap-2 px-3 py-2 w-full text-left text-sm text-muted-foreground hover:bg-accent/50 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Add Project</span>
-          </button>
-        </div>
+            )}
+          </Droppable>
+        </DragDropContext>
       </ScrollArea>
     </div>
   );
@@ -905,6 +998,20 @@ export default function Workspace() {
                 </Select>
               </div>
             </div>
+
+            {/* Recurring */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                checked={(selectedTask as any).recurring === "daily"}
+                onCheckedChange={(checked) => {
+                  updateTask.mutate({ id: selectedTask.id, recurring: checked ? "daily" : "none" });
+                }}
+              />
+              <span className="text-sm flex items-center gap-1.5">
+                <Repeat className="h-3.5 w-3.5 text-muted-foreground" />
+                Recurring (daily)
+              </span>
+            </label>
 
             {/* Description */}
             <div>

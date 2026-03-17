@@ -615,5 +615,14 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  // ─── Project Reorder ───
+  app.post(`${t}/projects/reorder`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const { projectIds } = req.body;
+    if (!Array.isArray(projectIds)) return res.status(400).json({ error: "projectIds array required" });
+    await storage.reorderProjects(team.id, projectIds);
+    res.json({ success: true });
+  });
+
   return httpServer;
 }

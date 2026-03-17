@@ -43,6 +43,7 @@ const projects = pgTable("projects", {
   description: text("description"),
   color: text("color").notNull(),
   ownerId: integer("owner_id"),
+  displayOrder: integer("display_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -58,6 +59,7 @@ const tasks = pgTable("tasks", {
   assigneeIds: text("assignee_ids"),
   projectId: integer("project_id"),
   dueDate: text("due_date"),
+  recurring: text("recurring").notNull().default("none"),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -687,6 +689,17 @@ app.post(`${t}/tasks/reorder`, resolveTeam, async (req, res) => {
   if (!Array.isArray(taskIds)) return res.status(400).json({ error: "taskIds array required" });
   for (let i = 0; i < taskIds.length; i++) {
     await db.update(tasks).set({ order: i }).where(and(eq(tasks.id, taskIds[i]), eq(tasks.teamId, team.id)));
+  }
+  res.json({ success: true });
+});
+
+// Project Reorder
+app.post(`${t}/projects/reorder`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const { projectIds } = req.body;
+  if (!Array.isArray(projectIds)) return res.status(400).json({ error: "projectIds array required" });
+  for (let i = 0; i < projectIds.length; i++) {
+    await db.update(projects).set({ displayOrder: i }).where(and(eq(projects.id, projectIds[i]), eq(projects.teamId, team.id)));
   }
   res.json({ success: true });
 });
