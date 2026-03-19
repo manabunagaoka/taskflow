@@ -22,6 +22,7 @@ import {
   AlertCircle, Mail, KeyRound, Settings, ArrowUpDown, Repeat, Clock,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
+import { MentionTextarea } from "@/components/mention-textarea";
 import { UserSelector } from "@/components/user-selector";
 import { useTheme } from "@/components/theme-provider";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -278,6 +279,7 @@ export default function Workspace() {
         color: projectColor,
         description: projectDescription || null,
         ownerId: projectOwnerId ? parseInt(projectOwnerId) : null,
+        changedBy: currentUser || "Someone",
       });
       return res.json();
     },
@@ -1062,16 +1064,16 @@ export default function Workspace() {
             {/* Description */}
             <div>
               <Label className="text-xs text-muted-foreground">Description</Label>
-              <Textarea
+              <MentionTextarea
                 className="mt-1 resize-none text-sm overflow-hidden"
                 rows={2}
                 value={editDescription}
-                onChange={(e) => {
-                  setEditDescription(e.target.value);
-                  debouncedUpdateTask({ id: selectedTask.id, description: e.target.value || null });
-                  e.target.style.height = "auto";
-                  e.target.style.height = e.target.scrollHeight + "px";
+                members={members}
+                onChange={(val) => {
+                  setEditDescription(val);
+                  debouncedUpdateTask({ id: selectedTask.id, description: val || null });
                 }}
+                onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
                 onFocus={(e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
                 placeholder="Add details..."
               />
@@ -1278,13 +1280,11 @@ export default function Workspace() {
             </div>
             <div>
               <Label>Description</Label>
-              <Textarea
+              <MentionTextarea
                 value={projectDescription}
-                onChange={(e) => {
-                  setProjectDescription(e.target.value);
-                  e.target.style.height = "auto";
-                  e.target.style.height = e.target.scrollHeight + "px";
-                }}
+                members={members}
+                onChange={(val) => setProjectDescription(val)}
+                onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
                 onFocus={(e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
                 placeholder="What is this project about?"
                 className="resize-none overflow-hidden"

@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MentionTextarea } from "@/components/mention-textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -259,13 +260,14 @@ export function TaskDialog({
 
           <div>
             <Label htmlFor="description">Description</Label>
-            <Textarea
+            <MentionTextarea
               id="description"
-              {...form.register("description")}
+              value={form.watch("description") || ""}
+              onChange={(val) => form.setValue("description", val)}
+              members={members}
               placeholder="Add details..."
               className="resize-none overflow-hidden"
               rows={2}
-              data-testid="input-task-description"
               onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
               onFocus={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
             />
