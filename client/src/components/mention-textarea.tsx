@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Textarea } from "@/components/ui/textarea";
 import type { Member } from "@shared/schema";
@@ -30,6 +30,7 @@ export function MentionTextarea({
   const [mentionFilter, setMentionFilter] = useState("");
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isSelectingRef = useRef(false);
 
   const updateDropdownPos = useCallback(() => {
     if (textareaRef.current) {
@@ -67,22 +68,11 @@ export function MentionTextarea({
       const lastAt = value.lastIndexOf("@");
       onChange(value.slice(0, lastAt) + `@${name} `);
       setShowMentions(false);
+      isSelectingRef.current = false;
       textareaRef.current?.focus();
     },
     [value, onChange],
   );
-
-  // Close dropdown on scroll or resize
-  useEffect(() => {
-    if (!showMentions) return;
-    const close = () => setShowMentions(false);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [showMentions]);
 
   const filtered = members.filter((m) =>
     m.name.toLowerCase().includes(mentionFilter.toLowerCase()),
@@ -100,13 +90,21 @@ export function MentionTextarea({
         rows={rows}
         onFocus={onFocus}
         onInput={onInput}
-        onBlur={() => setTimeout(() => setShowMentions(false), 200)}
+        onBlur={() => {
+          if (!isSelectingRef.current) {
+            setTimeout(() => setShowMentions(false), 300);
+          }
+        }}
       />
       {showMentions && filtered.length > 0 &&
         createPortal(
           <div
             className="w-48 bg-popover border rounded-md shadow-md max-h-32 overflow-y-auto"
             style={{ position: "fixed", top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              isSelectingRef.current = true;
+            }}
           >
             {filtered.map((m) => (
               <button
@@ -115,8 +113,10 @@ export function MentionTextarea({
                 className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  insertMention(m.name);
+                  e.stopPropagation();
+                  isSelectingRef.current = true;
                 }}
+                onClick={() => insertMention(m.name)}
               >
                 {(m as any).type === "agent" ? "🤖 " : ""}
                 {m.name}
