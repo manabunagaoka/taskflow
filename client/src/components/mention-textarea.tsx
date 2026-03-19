@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Textarea } from "@/components/ui/textarea";
 import type { Member } from "@shared/schema";
 
@@ -27,7 +28,15 @@ export function MentionTextarea({
 }: MentionTextareaProps) {
   const [showMentions, setShowMentions] = useState(false);
   const [mentionFilter, setMentionFilter] = useState("");
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const updateDropdownPos = useCallback(() => {
+    if (textareaRef.current) {
+      const rect = textareaRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left });
+    }
+  }, []);
 
   const handleChange = useCallback(
     (val: string) => {
@@ -36,11 +45,13 @@ export function MentionTextarea({
       if (lastAt !== -1 && lastAt === val.length - 1) {
         setShowMentions(true);
         setMentionFilter("");
+        updateDropdownPos();
       } else if (lastAt !== -1) {
         const afterAt = val.slice(lastAt + 1);
         if (!afterAt.includes(" ") || afterAt.split(" ").length <= 2) {
           setShowMentions(true);
           setMentionFilter(afterAt);
+          updateDropdownPos();
         } else {
           setShowMentions(false);
         }
@@ -48,7 +59,7 @@ export function MentionTextarea({
         setShowMentions(false);
       }
     },
-    [onChange],
+    [onChange, updateDropdownPos],
   );
 
   const insertMention = useCallback(
@@ -61,12 +72,24 @@ export function MentionTextarea({
     [value, onChange],
   );
 
+  // Close dropdown on scroll or resize
+  useEffect(() => {
+    if (!showMentions) return;
+    const close = () => setShowMentions(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [showMentions]);
+
   const filtered = members.filter((m) =>
     m.name.toLowerCase().includes(mentionFilter.toLowerCase()),
   );
 
   return (
-    <div className="relative">
+    <>
       <Textarea
         ref={textareaRef}
         id={id}
@@ -77,25 +100,31 @@ export function MentionTextarea({
         rows={rows}
         onFocus={onFocus}
         onInput={onInput}
+        onBlur={() => setTimeout(() => setShowMentions(false), 200)}
       />
-      {showMentions && filtered.length > 0 && (
-        <div className="absolute top-full mt-1 left-0 w-48 bg-popover border rounded-md shadow-md z-[100] max-h-32 overflow-y-auto">
-          {filtered.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                insertMention(m.name);
-              }}
-            >
-              {(m as any).type === "agent" ? "🤖 " : ""}
-              {m.name}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      {showMentions && filtered.length > 0 &&
+        createPortal(
+          <div
+            className="w-48 bg-popover border rounded-md shadow-md max-h-32 overflow-y-auto"
+            style={{ position: "fixed", top: dropdownPos.top, left: dropdownPos.left, zIndex: 9999 }}
+          >
+            {filtered.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  insertMention(m.name);
+                }}
+              >
+                {(m as any).type === "agent" ? "🤖 " : ""}
+                {m.name}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
