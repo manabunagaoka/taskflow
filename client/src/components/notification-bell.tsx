@@ -12,12 +12,14 @@ export function NotificationBell() {
   const { apiBase } = useTeam();
   const { currentUser } = useCurrentUser();
 
-  const { data: notifications = [] } = useQuery<any[]>({
+const { data: allNotifications = [] } = useQuery<any[]>({
     queryKey: [`${apiBase}/notifications/${currentUser}`],
     enabled: !!currentUser,
     refetchInterval: 30000,
   });
 
+  // Exclude chat mentions — those show on the chat icon instead
+  const notifications = allNotifications.filter((n: any) => n.title !== "You were mentioned in chat");
   const unreadCount = notifications.filter((n: any) => n.read === "false").length;
 
   const markRead = useMutation({

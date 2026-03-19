@@ -154,6 +154,27 @@ export default function Workspace() {
     refetchInterval: chatOpen ? 3000 : false,
   });
 
+  // Chat mention notifications (badge on chat icon)
+  const { data: allNotifications = [] } = useQuery<any[]>({
+    queryKey: [`${apiBase}/notifications/${currentUser}`],
+    enabled: !!currentUser,
+    refetchInterval: 30000,
+  });
+  const unreadChatMentions = allNotifications.filter(
+    (n: any) => n.title === "You were mentioned in chat" && n.read === "false"
+  );
+
+  // Auto-mark chat mentions read when chat is opened
+  useEffect(() => {
+    if (chatOpen && unreadChatMentions.length > 0) {
+      unreadChatMentions.forEach((n: any) => {
+        apiRequest("PATCH", `${apiBase}/notifications/${n.id}/read`).then(() => {
+          queryClient.invalidateQueries({ queryKey: [`${apiBase}/notifications/${currentUser}`] });
+        });
+      });
+    }
+  }, [chatOpen, unreadChatMentions.length]);
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     if (chatOpen && chatEndRef.current) {
@@ -1199,6 +1220,11 @@ export default function Workspace() {
             className="relative"
           >
             <MessageSquare className="h-4 w-4" />
+            {unreadChatMentions.length > 0 && !chatOpen && (
+              <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center">
+                {unreadChatMentions.length > 9 ? "9+" : unreadChatMentions.length}
+              </span>
+            )}
           </Button>
           <Button size="icon" variant="ghost" onClick={() => setSettingsDialogOpen(true)} aria-label="Settings">
             <Settings className="h-4 w-4" />
