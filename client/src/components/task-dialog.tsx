@@ -234,28 +234,7 @@ export function TaskDialog({
     m.name.toLowerCase().includes(mentionFilter.toLowerCase())
   );
 
-  // @mention for description
-  const [descMentionShow, setDescMentionShow] = useState(false);
-  const [descMentionFilter, setDescMentionFilter] = useState("");
-  const handleDescChange = (value: string) => {
-    form.setValue("description", value);
-    const lastAt = value.lastIndexOf("@");
-    if (lastAt !== -1 && lastAt === value.length - 1) {
-      setDescMentionShow(true); setDescMentionFilter("");
-    } else if (lastAt !== -1) {
-      const afterAt = value.slice(lastAt + 1);
-      if (!afterAt.includes(" ") || afterAt.split(" ").length <= 2) {
-        setDescMentionShow(true); setDescMentionFilter(afterAt);
-      } else { setDescMentionShow(false); }
-    } else { setDescMentionShow(false); }
-  };
-  const insertDescMention = (name: string) => {
-    const desc = form.getValues("description") || "";
-    const lastAt = desc.lastIndexOf("@");
-    form.setValue("description", desc.slice(0, lastAt) + `@${name} `);
-    setDescMentionShow(false);
-  };
-  const filteredDescMembers = members.filter(m => m.name.toLowerCase().includes(descMentionFilter.toLowerCase()));
+
 
   const progress = form.watch("progress");
 
@@ -285,22 +264,13 @@ export function TaskDialog({
             <Textarea
               id="description"
               value={form.watch("description") || ""}
-              onChange={(e) => handleDescChange(e.target.value)}
-              placeholder="Add details... (@ to mention)"
+              onChange={(e) => form.setValue("description", e.target.value)}
+              placeholder="Add details..."
               className="resize-none overflow-hidden"
               rows={2}
               onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
               onFocus={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
             />
-            {descMentionShow && filteredDescMembers.length > 0 && (
-              <div className="absolute bottom-full mb-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
-                {filteredDescMembers.map((m) => (
-                  <button key={m.id} type="button" className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors" onClick={() => insertDescMention(m.name)}>
-                    {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

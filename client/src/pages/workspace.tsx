@@ -140,11 +140,7 @@ export default function Workspace() {
   const [mentionFilter, setMentionFilter] = useState("");
   const commentRef = useRef<HTMLInputElement>(null);
 
-  // @mention state for description fields
-  const [descMentionShow, setDescMentionShow] = useState(false);
-  const [descMentionFilter, setDescMentionFilter] = useState("");
-  const [projDescMentionShow, setProjDescMentionShow] = useState(false);
-  const [projDescMentionFilter, setProjDescMentionFilter] = useState("");
+
 
   // Data queries
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: [`${apiBase}/projects`] });
@@ -491,46 +487,7 @@ export default function Workspace() {
 
   const filteredMentionMembers = members.filter(m => m.name.toLowerCase().includes(mentionFilter.toLowerCase()));
 
-  const handleDescChange = (value: string) => {
-    setEditDescription(value);
-    if (selectedTask) debouncedUpdateTask({ id: selectedTask.id, description: value || null });
-    const lastAt = value.lastIndexOf("@");
-    if (lastAt !== -1 && lastAt === value.length - 1) {
-      setDescMentionShow(true); setDescMentionFilter("");
-    } else if (lastAt !== -1) {
-      const afterAt = value.slice(lastAt + 1);
-      if (!afterAt.includes(" ") || afterAt.split(" ").length <= 2) {
-        setDescMentionShow(true); setDescMentionFilter(afterAt);
-      } else { setDescMentionShow(false); }
-    } else { setDescMentionShow(false); }
-  };
-  const insertDescMention = (name: string) => {
-    const lastAt = editDescription.lastIndexOf("@");
-    const val = editDescription.slice(0, lastAt) + `@${name} `;
-    setEditDescription(val);
-    if (selectedTask) debouncedUpdateTask({ id: selectedTask.id, description: val || null });
-    setDescMentionShow(false);
-  };
-  const filteredDescMembers = members.filter(m => m.name.toLowerCase().includes(descMentionFilter.toLowerCase()));
 
-  const handleProjDescChange = (value: string) => {
-    setProjectDescription(value);
-    const lastAt = value.lastIndexOf("@");
-    if (lastAt !== -1 && lastAt === value.length - 1) {
-      setProjDescMentionShow(true); setProjDescMentionFilter("");
-    } else if (lastAt !== -1) {
-      const afterAt = value.slice(lastAt + 1);
-      if (!afterAt.includes(" ") || afterAt.split(" ").length <= 2) {
-        setProjDescMentionShow(true); setProjDescMentionFilter(afterAt);
-      } else { setProjDescMentionShow(false); }
-    } else { setProjDescMentionShow(false); }
-  };
-  const insertProjDescMention = (name: string) => {
-    const lastAt = projectDescription.lastIndexOf("@");
-    setProjectDescription(projectDescription.slice(0, lastAt) + `@${name} `);
-    setProjDescMentionShow(false);
-  };
-  const filteredProjDescMembers = members.filter(m => m.name.toLowerCase().includes(projDescMentionFilter.toLowerCase()));
 
   const isProjectComplete = (p: Project) => {
     const pTasks = tasks.filter((t) => t.projectId === p.id);
@@ -1114,20 +1071,14 @@ export default function Workspace() {
                 className="mt-1 resize-none text-sm overflow-hidden"
                 rows={2}
                 value={editDescription}
-                onChange={(e) => handleDescChange(e.target.value)}
+                onChange={(e) => {
+                  setEditDescription(e.target.value);
+                  if (selectedTask) debouncedUpdateTask({ id: selectedTask.id, description: e.target.value || null });
+                }}
                 onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
                 onFocus={(e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
-                placeholder="Add details... (@ to mention)"
+                placeholder="Add details..."
               />
-              {descMentionShow && filteredDescMembers.length > 0 && (
-                <div className="absolute bottom-full mb-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
-                  {filteredDescMembers.map((m) => (
-                    <button key={m.id} type="button" className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors" onClick={() => insertDescMention(m.name)}>
-                      {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Project Folders in task context */}
@@ -1333,22 +1284,13 @@ export default function Workspace() {
               <Label>Description</Label>
               <Textarea
                 value={projectDescription}
-                onChange={(e) => handleProjDescChange(e.target.value)}
+                onChange={(e) => setProjectDescription(e.target.value)}
                 onInput={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
                 onFocus={(e) => { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + "px"; }}
-                placeholder="What is this project about? (@ to mention)"
+                placeholder="What is this project about?"
                 className="resize-none overflow-hidden"
                 rows={2}
               />
-              {projDescMentionShow && filteredProjDescMembers.length > 0 && (
-                <div className="absolute top-full mt-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
-                  {filteredProjDescMembers.map((m) => (
-                    <button key={m.id} type="button" className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors" onClick={() => insertProjDescMention(m.name)}>
-                      {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
             <div>
               <Label>Owner</Label>

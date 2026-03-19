@@ -361,38 +361,8 @@ app.patch(`${t}/projects/:id`, resolveTeam, async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
   const { changedBy, ...updateData } = req.body;
-  const [oldProject] = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.teamId, team.id)));
   const [updated] = await db.update(projects).set(updateData).where(and(eq(projects.id, id), eq(projects.teamId, team.id))).returning();
   if (!updated) return res.status(404).json({ error: "Not found" });
-
-  // Check for NEW @mentions in project description
-  if (req.body.description) {
-    const newMentions = req.body.description.match(/@(\w+(?:\s\w+)?)/g) || [];
-    const oldMentions = (oldProject?.description || "").match(/@(\w+(?:\s\w+)?)/g) || [];
-    const addedMentions = newMentions.filter((m: string) => !oldMentions.includes(m));
-    if (addedMentions.length > 0) {
-      const allMembers = await db.select().from(members).where(eq(members.teamId, team.id));
-      const authorName = changedBy || "Someone";
-      for (const mention of addedMentions) {
-        const mentionedName = mention.replace("@", "").trim();
-        const member = allMembers.find((m: any) =>
-          m.name.toLowerCase() === mentionedName.toLowerCase()
-        );
-        if (member && member.name !== authorName) {
-          await db.insert(notifications).values({
-            teamId: team.id,
-            recipientName: member.name,
-            title: "You were mentioned in a project",
-            message: `${authorName} mentioned you in project "${updated.name}"`,
-            taskId: null,
-            projectId: id,
-            read: "false",
-          });
-        }
-      }
-    }
-  }
-
   res.json(updated);
 });
 
@@ -459,33 +429,6 @@ app.patch(`${t}/tasks/:id`, resolveTeam, async (req, res) => {
 
   if (req.body.progress !== undefined && req.body.progress !== oldTask.progress) {
     await db.insert(activityLogs).values({ teamId: team.id, taskId: id, authorName, type: "change", content: `Progress updated to ${req.body.progress}%` });
-  }
-
-  // Check for NEW @mentions in description (skip ones already in old description)
-  if (req.body.description && req.body.description !== oldTask.description) {
-    const newMentions = req.body.description.match(/@(\w+(?:\s\w+)?)/g) || [];
-    const oldMentions = (oldTask.description || "").match(/@(\w+(?:\s\w+)?)/g) || [];
-    const addedMentions = newMentions.filter((m: string) => !oldMentions.includes(m));
-    if (addedMentions.length > 0) {
-      const allMembers = await db.select().from(members).where(eq(members.teamId, team.id));
-      for (const mention of addedMentions) {
-        const mentionedName = mention.replace("@", "").trim();
-        const member = allMembers.find((m: any) =>
-          m.name.toLowerCase() === mentionedName.toLowerCase()
-        );
-        if (member && member.name !== authorName) {
-          await db.insert(notifications).values({
-            teamId: team.id,
-            recipientName: member.name,
-            title: "You were mentioned in a task",
-            message: `${authorName} mentioned you in "${updated.title}"`,
-            taskId: id,
-            projectId: updated.projectId,
-            read: "false",
-          });
-        }
-      }
-    }
   }
 
   res.json(updated);
