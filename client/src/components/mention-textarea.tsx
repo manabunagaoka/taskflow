@@ -79,7 +79,7 @@ export function MentionTextarea({
         onInput={onInput}
       />
       {showMentions && filtered.length > 0 && (
-        <div className="absolute bottom-full mb-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
+        <div className="absolute top-full mt-1 left-0 w-48 bg-popover border rounded-md shadow-md z-[100] max-h-32 overflow-y-auto">
           {filtered.map((m) => (
             <button
               key={m.id}
