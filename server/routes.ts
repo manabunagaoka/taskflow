@@ -624,5 +624,20 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  // ─── Chat Messages ───
+  app.get(`${t}/messages`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const msgs = await storage.getMessages(team.id);
+    res.json(msgs);
+  });
+
+  app.post(`${t}/messages`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const { authorName, content } = req.body;
+    if (!authorName || !content) return res.status(400).json({ error: "authorName and content required" });
+    const msg = await storage.createMessage({ teamId: team.id, authorName, content });
+    res.status(201).json(msg);
+  });
+
   return httpServer;
 }

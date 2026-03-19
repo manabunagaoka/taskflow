@@ -1,7 +1,7 @@
 import { eq, asc, desc, and, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  teams, members, projects, tasks, activityLogs, notifications, projectFolders,
+  teams, members, projects, tasks, activityLogs, notifications, projectFolders, messages,
   type Team, type InsertTeam,
   type Member, type InsertMember,
   type Project, type InsertProject,
@@ -9,6 +9,7 @@ import {
   type ActivityLog, type InsertActivityLog,
   type Notification, type InsertNotification,
   type ProjectFolder, type InsertProjectFolder,
+  type Message, type InsertMessage,
 } from "../shared/schema";
 
 export interface IStorage {
@@ -67,6 +68,10 @@ export interface IStorage {
 
   // Project reorder
   reorderProjects(teamId: number, projectIds: number[]): Promise<void>;
+
+  // Chat Messages
+  getMessages(teamId: number): Promise<Message[]>;
+  createMessage(message: InsertMessage): Promise<Message>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -91,6 +96,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(activityLogs).where(eq(activityLogs.teamId, id));
     await db.delete(notifications).where(eq(notifications.teamId, id));
     await db.delete(projectFolders).where(eq(projectFolders.teamId, id));
+    await db.delete(messages).where(eq(messages.teamId, id));
     await db.delete(tasks).where(eq(tasks.teamId, id));
     await db.delete(members).where(eq(members.teamId, id));
     await db.delete(projects).where(eq(projects.teamId, id));
@@ -284,6 +290,17 @@ export class DatabaseStorage implements IStorage {
     for (let i = 0; i < projectIds.length; i++) {
       await db.update(projects).set({ displayOrder: i }).where(and(eq(projects.id, projectIds[i]), eq(projects.teamId, teamId)));
     }
+  }
+
+  // Chat Messages
+  async getMessages(teamId: number): Promise<Message[]> {
+    return db.select().from(messages)
+      .where(eq(messages.teamId, teamId))
+      .orderBy(asc(messages.createdAt));
+  }
+  async createMessage(message: InsertMessage): Promise<Message> {
+    const [created] = await db.insert(messages).values(message).returning();
+    return created;
   }
 }
 

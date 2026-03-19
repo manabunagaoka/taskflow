@@ -1,9 +1,9 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useTeam } from "@/lib/team-context";
 import { useCurrentUser } from "@/context/user-context";
-import type { Task, Member, Project, ProjectFolder } from "@shared/schema";
+import type { Task, Member, Project, ProjectFolder, Message } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -123,6 +123,11 @@ export default function Workspace() {
   // Task filter
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
 
+  // Chat
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessage, setChatMessage] = useState("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   // Project sort
   const [projectSort, setProjectSort] = useState<"manual" | "alpha-asc" | "alpha-desc" | "owner">("manual");
 
@@ -142,6 +147,19 @@ export default function Workspace() {
   const { data: teamInfo } = useQuery<{ id: number; createdBy: number | null; hasPasskey: boolean }>({
     queryKey: [`/api/teams/${teamSlug}`],
   });
+
+  // Chat messages with 3s polling
+  const { data: chatMessages = [] } = useQuery<Message[]>({
+    queryKey: [`${apiBase}/messages`],
+    refetchInterval: chatOpen ? 3000 : false,
+  });
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    if (chatOpen && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMessages.length, chatOpen]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedTask = tasks.find((t) => t.id === selectedTaskId);
@@ -1173,6 +1191,15 @@ export default function Workspace() {
         <div className="flex items-center gap-2 ml-auto shrink-0">
           <UserSelector />
           <NotificationBell />
+          <Button
+            size="icon"
+            variant={chatOpen ? "default" : "ghost"}
+            onClick={() => setChatOpen(!chatOpen)}
+            aria-label="Team Chat"
+            className="relative"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </Button>
           <Button size="icon" variant="ghost" onClick={() => setSettingsDialogOpen(true)} aria-label="Settings">
             <Settings className="h-4 w-4" />
           </Button>
@@ -1668,6 +1695,87 @@ export default function Workspace() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ===== CHAT PANEL ===== */}
+      {chatOpen && (
+        <div className="fixed bottom-4 right-4 w-80 h-96 bg-background border rounded-lg shadow-xl flex flex-col z-50">
+          <div className="h-10 flex items-center justify-between px-3 border-b shrink-0">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5" /> Team Chat
+            </span>
+            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setChatOpen(false)}>
+              <span className="text-xs">✕</span>
+            </Button>
+          </div>
+          <ScrollArea className="flex-1 px-3 py-2">
+            <div className="space-y-3">
+              {chatMessages.map((msg) => {
+                const isMe = msg.authorName === currentUser;
+                const member = members.find(m => m.name === msg.authorName);
+                const isAgent = (member as any)?.type === "agent";
+                return (
+                  <div key={msg.id} className={`flex gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
+                    <Avatar className="h-6 w-6 shrink-0 mt-0.5">
+                      <AvatarFallback
+                        className="text-[8px] font-semibold text-white"
+                        style={{ backgroundColor: member?.color || "#888" }}
+                      >
+                        {isAgent ? "🤖" : getInitials(msg.authorName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className={`max-w-[75%] ${isMe ? "text-right" : ""}`}>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className={`text-[10px] font-medium ${isMe ? "ml-auto" : ""}`}>
+                          {isAgent ? "🤖 " : ""}{msg.authorName}
+                        </span>
+                        <span className="text-[9px] text-muted-foreground">
+                          {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+                        </span>
+                      </div>
+                      <div className={`text-sm rounded-lg px-2.5 py-1.5 inline-block ${
+                        isMe
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted"
+                      }`}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={chatEndRef} />
+            </div>
+          </ScrollArea>
+          <div className="p-2 border-t">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!chatMessage.trim() || !currentUser) return;
+                apiRequest("POST", `${apiBase}/messages`, {
+                  authorName: currentUser,
+                  content: chatMessage.trim(),
+                }).then(() => {
+                  setChatMessage("");
+                  queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
+                });
+              }}
+              className="flex gap-1.5"
+            >
+              <Input
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                placeholder={currentUser ? "Type a message..." : "Select a user first"}
+                disabled={!currentUser}
+                className="text-sm h-8 flex-1"
+                autoFocus
+              />
+              <Button type="submit" size="icon" className="h-8 w-8 shrink-0" disabled={!chatMessage.trim() || !currentUser}>
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

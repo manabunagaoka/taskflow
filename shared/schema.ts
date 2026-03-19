@@ -120,3 +120,16 @@ export const projectFolders = pgTable("project_folders", {
 export const insertProjectFolderSchema = createInsertSchema(projectFolders).omit({ id: true, createdAt: true });
 export type InsertProjectFolder = z.infer<typeof insertProjectFolderSchema>;
 export type ProjectFolder = typeof projectFolders.$inferSelect;
+
+// Chat Messages
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  authorName: text("author_name").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
+export type InsertMessage = z.infer<typeof insertMessageSchema>;
+export type Message = typeof messages.$inferSelect;

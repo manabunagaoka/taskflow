@@ -96,6 +96,14 @@ const projectFolders = pgTable("project_folders", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  teamId: integer("team_id").notNull(),
+  authorName: text("author_name").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 const insertTeamSchema = createInsertSchema(teams).omit({ id: true, createdAt: true });
 const insertMemberSchema = createInsertSchema(members).omit({ id: true, createdAt: true });
 const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true });
@@ -187,6 +195,7 @@ app.delete("/api/t/:teamSlug", resolveTeam, async (req, res) => {
   }
   await db.delete(activityLogs).where(eq(activityLogs.teamId, team.id));
   await db.delete(notifications).where(eq(notifications.teamId, team.id));
+  await db.delete(messages).where(eq(messages.teamId, team.id));
   await db.delete(tasks).where(eq(tasks.teamId, team.id));
   await db.delete(members).where(eq(members.teamId, team.id));
   await db.delete(projects).where(eq(projects.teamId, team.id));
@@ -216,6 +225,7 @@ app.delete("/api/admin/:key/teams/:id", async (req, res) => {
   await db.delete(activityLogs).where(eq(activityLogs.teamId, id));
   await db.delete(notifications).where(eq(notifications.teamId, id));
   await db.delete(projectFolders).where(eq(projectFolders.teamId, id));
+  await db.delete(messages).where(eq(messages.teamId, id));
   await db.delete(tasks).where(eq(tasks.teamId, id));
   await db.delete(members).where(eq(members.teamId, id));
   await db.delete(projects).where(eq(projects.teamId, id));
@@ -320,6 +330,7 @@ app.delete(`${t}/members/:id`, resolveTeam, async (req, res) => {
     await db.delete(activityLogs).where(eq(activityLogs.teamId, team.id));
     await db.delete(notifications).where(eq(notifications.teamId, team.id));
     await db.delete(projectFolders).where(eq(projectFolders.teamId, team.id));
+    await db.delete(messages).where(eq(messages.teamId, team.id));
     await db.delete(tasks).where(eq(tasks.teamId, team.id));
     await db.delete(projects).where(eq(projects.teamId, team.id));
     await db.delete(teams).where(eq(teams.id, team.id));
@@ -702,6 +713,21 @@ app.post(`${t}/projects/reorder`, resolveTeam, async (req, res) => {
     await db.update(projects).set({ displayOrder: i }).where(and(eq(projects.id, projectIds[i]), eq(projects.teamId, team.id)));
   }
   res.json({ success: true });
+});
+
+// ─── Chat Messages ───
+app.get(`${t}/messages`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const msgs = await db.select().from(messages).where(eq(messages.teamId, team.id)).orderBy(asc(messages.createdAt));
+  res.json(msgs);
+});
+
+app.post(`${t}/messages`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const { authorName, content } = req.body;
+  if (!authorName || !content) return res.status(400).json({ error: "authorName and content required" });
+  const [msg] = await db.insert(messages).values({ teamId: team.id, authorName, content }).returning();
+  res.status(201).json(msg);
 });
 
 export default function handler(req: any, res: any) {
