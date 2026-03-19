@@ -1714,7 +1714,7 @@ export default function Workspace() {
                 const member = members.find(m => m.name === msg.authorName);
                 const isAgent = (member as any)?.type === "agent";
                 return (
-                  <div key={msg.id} className={`flex gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
+                  <div key={msg.id} className={`group flex gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
                     <Avatar className="h-6 w-6 shrink-0 mt-0.5">
                       <AvatarFallback
                         className="text-[8px] font-semibold text-white"
@@ -1724,13 +1724,25 @@ export default function Workspace() {
                       </AvatarFallback>
                     </Avatar>
                     <div className={`max-w-[75%] ${isMe ? "text-right" : ""}`}>
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className={`text-[10px] font-medium ${isMe ? "ml-auto" : ""}`}>
+                      <div className={`flex items-center gap-1.5 mb-0.5 ${isMe ? "justify-end" : ""}`}>
+                        <span className={`text-[10px] font-medium`}>
                           {isAgent ? "🤖 " : ""}{msg.authorName}
                         </span>
                         <span className="text-[9px] text-muted-foreground">
                           {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
                         </span>
+                        {isMe && (
+                          <button
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => {
+                              apiRequest("DELETE", `${apiBase}/messages/${msg.id}`).then(() => {
+                                queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
+                              });
+                            }}
+                          >
+                            <Trash2 className="h-2.5 w-2.5 text-destructive" />
+                          </button>
+                        )}
                       </div>
                       <div className={`text-sm rounded-lg px-2.5 py-1.5 inline-block ${
                         isMe
@@ -1746,7 +1758,36 @@ export default function Workspace() {
               <div ref={chatEndRef} />
             </div>
           </ScrollArea>
-          <div className="p-2 border-t">
+          <div className="p-2 border-t relative">
+            {/* @mention autocomplete */}
+            {chatMessage.includes("@") && (() => {
+              const lastAt = chatMessage.lastIndexOf("@");
+              const afterAt = chatMessage.slice(lastAt + 1);
+              if (afterAt.includes(" ") && afterAt.split(" ").length > 2) return null;
+              const filtered = members.filter(m => m.name.toLowerCase().includes(afterAt.toLowerCase()));
+              if (filtered.length === 0) return null;
+              return (
+                <div className="absolute bottom-full left-2 right-2 mb-1 bg-popover border rounded-md shadow-md max-h-32 overflow-y-auto">
+                  {filtered.map(m => (
+                    <button
+                      key={m.id}
+                      className="flex items-center gap-2 px-2 py-1.5 w-full text-left text-sm hover:bg-accent"
+                      onClick={() => {
+                        const before = chatMessage.slice(0, lastAt);
+                        setChatMessage(`${before}@${m.name} `);
+                      }}
+                    >
+                      <Avatar className="h-4 w-4">
+                        <AvatarFallback className="text-[6px] font-semibold text-white" style={{ backgroundColor: m.color }}>
+                          {getInitials(m.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -1764,7 +1805,7 @@ export default function Workspace() {
               <Input
                 value={chatMessage}
                 onChange={(e) => setChatMessage(e.target.value)}
-                placeholder={currentUser ? "Type a message..." : "Select a user first"}
+                placeholder={currentUser ? "Type @ to mention..." : "Select a user first"}
                 disabled={!currentUser}
                 className="text-sm h-8 flex-1"
                 autoFocus

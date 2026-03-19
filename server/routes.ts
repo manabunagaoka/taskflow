@@ -636,7 +636,40 @@ export async function registerRoutes(
     const { authorName, content } = req.body;
     if (!authorName || !content) return res.status(400).json({ error: "authorName and content required" });
     const msg = await storage.createMessage({ teamId: team.id, authorName, content });
+
+    // Check for @mentions and create notifications
+    const mentions = content.match(/@(\w+(?:\s\w+)?)/g);
+    if (mentions) {
+      const allMembers = await storage.getMembers(team.id);
+      for (const mention of mentions) {
+        const mentionedName = mention.replace("@", "").trim();
+        const member = allMembers.find((m: any) =>
+          m.name.toLowerCase().startsWith(mentionedName.toLowerCase())
+        );
+        if (member) {
+          await storage.createNotification({
+            teamId: team.id,
+            recipientName: member.name,
+            title: "You were mentioned in chat",
+            message: `${authorName} mentioned you in chat: "${content}"`,
+            taskId: null,
+            projectId: null,
+            read: "false",
+          });
+        }
+      }
+    }
+
     res.status(201).json(msg);
+  });
+
+  app.delete(`${t}/messages/:id`, resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const deleted = await storage.deleteMessage(team.id, id);
+    if (!deleted) return res.status(404).json({ error: "Not found" });
+    res.status(204).send();
   });
 
   return httpServer;
