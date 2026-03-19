@@ -293,7 +293,7 @@ export function TaskDialog({
               onFocus={(e) => { const t = e.target as HTMLTextAreaElement; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }}
             />
             {descMentionShow && filteredDescMembers.length > 0 && (
-              <div className="absolute top-full mt-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
+              <div className="absolute bottom-full mb-1 left-0 w-48 bg-popover border rounded-md shadow-md z-50 max-h-32 overflow-y-auto">
                 {filteredDescMembers.map((m) => (
                   <button key={m.id} type="button" className="w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors" onClick={() => insertDescMention(m.name)}>
                     {(m as any).type === "agent" ? "🤖 " : ""}{m.name}

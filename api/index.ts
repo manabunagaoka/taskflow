@@ -376,7 +376,7 @@ app.patch(`${t}/projects/:id`, resolveTeam, async (req, res) => {
       for (const mention of addedMentions) {
         const mentionedName = mention.replace("@", "").trim();
         const member = allMembers.find((m: any) =>
-          m.name.toLowerCase().startsWith(mentionedName.toLowerCase())
+          m.name.toLowerCase() === mentionedName.toLowerCase()
         );
         if (member && member.name !== authorName) {
           await db.insert(notifications).values({
@@ -471,7 +471,7 @@ app.patch(`${t}/tasks/:id`, resolveTeam, async (req, res) => {
       for (const mention of addedMentions) {
         const mentionedName = mention.replace("@", "").trim();
         const member = allMembers.find((m: any) =>
-          m.name.toLowerCase().startsWith(mentionedName.toLowerCase())
+          m.name.toLowerCase() === mentionedName.toLowerCase()
         );
         if (member && member.name !== authorName) {
           await db.insert(notifications).values({
@@ -552,7 +552,7 @@ app.post(`${t}/tasks/:id/activity`, resolveTeam, async (req, res) => {
     const allMembers = await db.select().from(members).where(eq(members.teamId, team.id));
     for (const mention of mentions) {
       const mentionedName = mention.replace("@", "").trim();
-      const member = allMembers.find((m: any) => m.name.toLowerCase().startsWith(mentionedName.toLowerCase()));
+      const member = allMembers.find((m: any) => m.name.toLowerCase() === mentionedName.toLowerCase());
       if (member) {
         const [task] = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.teamId, team.id)));
         await db.insert(notifications).values({ teamId: team.id, recipientName: member.name, title: "You were mentioned in a comment", message: `${authorName} mentioned you on "${task?.title}": "${content}"`, taskId, projectId: task?.projectId || null, read: "false" });
@@ -792,7 +792,7 @@ app.post(`${t}/messages`, resolveTeam, async (req, res) => {
     const allMembers = await db.select().from(members).where(eq(members.teamId, team.id));
     for (const mention of mentions) {
       const mentionedName = mention.replace("@", "").trim();
-      const member = allMembers.find((m: any) => m.name.toLowerCase().startsWith(mentionedName.toLowerCase()));
+      const member = allMembers.find((m: any) => m.name.toLowerCase() === mentionedName.toLowerCase());
       if (member) {
         await db.insert(notifications).values({ teamId: team.id, recipientName: member.name, title: "You were mentioned in chat", message: `${authorName} mentioned you in chat: "${content}"`, taskId: null, projectId: null, read: "false" });
       }

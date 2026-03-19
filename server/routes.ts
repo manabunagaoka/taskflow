@@ -232,7 +232,7 @@ export async function registerRoutes(
         for (const mention of addedMentions) {
           const mentionedName = mention.replace("@", "").trim();
           const member = allMembers.find((m: any) =>
-            m.name.toLowerCase().startsWith(mentionedName.toLowerCase())
+            m.name.toLowerCase() === mentionedName.toLowerCase()
           );
           if (member && member.name !== authorName) {
             await storage.createNotification({
@@ -344,7 +344,7 @@ export async function registerRoutes(
         for (const mention of addedMentions) {
           const mentionedName = mention.replace("@", "").trim();
           const member = allMembers.find((m: any) =>
-            m.name.toLowerCase().startsWith(mentionedName.toLowerCase())
+            m.name.toLowerCase() === mentionedName.toLowerCase()
           );
           if (member && member.name !== authorName) {
             await storage.createNotification({
@@ -421,7 +421,7 @@ export async function registerRoutes(
       for (const mention of mentions) {
         const mentionedName = mention.replace("@", "").trim();
         const member = allMembers.find((m: any) =>
-          m.name.toLowerCase().startsWith(mentionedName.toLowerCase())
+          m.name.toLowerCase() === mentionedName.toLowerCase()
         );
         if (member) {
           const task = await storage.getTask(team.id, taskId);
@@ -702,7 +702,7 @@ export async function registerRoutes(
       for (const mention of mentions) {
         const mentionedName = mention.replace("@", "").trim();
         const member = allMembers.find((m: any) =>
-          m.name.toLowerCase().startsWith(mentionedName.toLowerCase())
+          m.name.toLowerCase() === mentionedName.toLowerCase()
         );
         if (member) {
           await storage.createNotification({
