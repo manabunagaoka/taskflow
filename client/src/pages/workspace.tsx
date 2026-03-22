@@ -19,7 +19,7 @@ import {
   Plus, Trash2, Users, Pencil, Bot, Send, ExternalLink,
   MessageSquare, RefreshCw, AlertTriangle, FolderOpen,
   LogOut, CheckCircle2, ArrowLeft, Filter, GripVertical,
-  AlertCircle, Mail, KeyRound, Settings, ArrowUpDown, Repeat, Clock,
+  AlertCircle, Mail, KeyRound, Settings, ArrowUpDown, Repeat, Clock, CalendarDays,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { UserSelector } from "@/components/user-selector";
@@ -29,7 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatDistanceToNow, isPast, isToday, parseISO, differenceInDays } from "date-fns";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 
 const PROJECT_COLORS = ["#4F98A3", "#A84B2F", "#437A22", "#7A39BB", "#D19900", "#006494", "#A12C7B", "#964219"];
 const MEMBER_COLORS = ["#4F98A3", "#A84B2F", "#437A22", "#7A39BB", "#006494", "#964219", "#A12C7B", "#D19900"];
@@ -1232,6 +1232,11 @@ export default function Workspace() {
               </span>
             )}
           </Button>
+          <Link href={`/t/${teamSlug}/timeline`}>
+            <Button size="icon" variant="ghost" aria-label="Timeline">
+              <CalendarDays className="h-4 w-4" />
+            </Button>
+          </Link>
           <Button size="icon" variant="ghost" onClick={() => setSettingsDialogOpen(true)} aria-label="Settings">
             <Settings className="h-4 w-4" />
           </Button>
