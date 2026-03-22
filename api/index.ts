@@ -729,11 +729,12 @@ app.post(`${t}/messages`, resolveTeam, async (req, res) => {
   if (!authorName || !content) return res.status(400).json({ error: "authorName and content required" });
   const [msg] = await db.insert(messages).values({ teamId: team.id, authorName, content }).returning();
 
-  // Check for @mentions and create notifications (case-insensitive per-member scan)
+  // Check for @mentions and create notifications (case-insensitive, word-boundary)
   const allMembers = await db.select().from(members).where(eq(members.teamId, team.id));
-  const contentLower = content.toLowerCase();
   for (const member of allMembers) {
-    if (member.name !== authorName && contentLower.includes(`@${member.name.toLowerCase()}`)) {
+    if (member.name === authorName) continue;
+    const pattern = new RegExp(`@${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$|[.,!?;:])`, 'i');
+    if (pattern.test(content)) {
       await db.insert(notifications).values({ teamId: team.id, recipientName: member.name, title: "You were mentioned in chat", message: `${authorName} mentioned you in chat: "${content}"`, taskId: null, projectId: null, read: "false" });
     }
   }

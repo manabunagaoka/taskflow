@@ -160,22 +160,24 @@ export default function Workspace() {
   const { data: allNotifications = [] } = useQuery<any[]>({
     queryKey: [`${apiBase}/notifications/${currentUser}`],
     enabled: !!currentUser,
-    refetchInterval: 30000,
+    refetchInterval: 10000,
   });
   const unreadChatMentions = allNotifications.filter(
     (n: any) => n.title === "You were mentioned in chat" && n.read === "false"
   );
 
-  // Auto-mark chat mentions read when chat is opened
+  // Auto-mark chat mentions read only when chat transitions from closed → open
+  const prevChatOpen = useRef(false);
   useEffect(() => {
-    if (chatOpen && unreadChatMentions.length > 0) {
+    if (chatOpen && !prevChatOpen.current && unreadChatMentions.length > 0) {
       unreadChatMentions.forEach((n: any) => {
         apiRequest("PATCH", `${apiBase}/notifications/${n.id}/read`).then(() => {
           queryClient.invalidateQueries({ queryKey: [`${apiBase}/notifications/${currentUser}`] });
         });
       });
     }
-  }, [chatOpen, unreadChatMentions.length]);
+    prevChatOpen.current = chatOpen;
+  }, [chatOpen]);
 
   // Auto-scroll chat to bottom
   useEffect(() => {

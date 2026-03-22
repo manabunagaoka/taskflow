@@ -638,11 +638,12 @@ export async function registerRoutes(
     if (!authorName || !content) return res.status(400).json({ error: "authorName and content required" });
     const msg = await storage.createMessage({ teamId: team.id, authorName, content });
 
-    // Check for @mentions and create notifications (case-insensitive per-member scan)
+    // Check for @mentions and create notifications (case-insensitive, word-boundary)
     const allMembers = await storage.getMembers(team.id);
-    const contentLower = content.toLowerCase();
     for (const member of allMembers) {
-      if (member.name !== authorName && contentLower.includes(`@${member.name.toLowerCase()}`)) {
+      if (member.name === authorName) continue;
+      const pattern = new RegExp(`@${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$|[.,!?;:])`, 'i');
+      if (pattern.test(content)) {
         await storage.createNotification({
           teamId: team.id,
           recipientName: member.name,
