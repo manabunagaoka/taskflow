@@ -15,6 +15,7 @@ import {
   addDays,
   differenceInDays,
   format,
+  startOfDay,
   startOfWeek,
   endOfWeek,
   addWeeks,
@@ -23,7 +24,8 @@ import {
   parseISO,
   startOfMonth,
   eachMonthOfInterval,
-  eachWeekOfInterval,
+  eachDayOfInterval,
+  getDay,
 } from "date-fns";
 import {
   ArrowLeft,
@@ -34,6 +36,8 @@ import { Link } from "wouter";
 function getInitials(name: string) {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
+
+const PIXELS_PER_DAY = 40;
 
 export default function Timeline() {
   const { teamSlug, teamName, apiBase } = useTeam();
@@ -63,7 +67,7 @@ export default function Timeline() {
   );
   const undatedCount = allTasks.length - datedTasks.length;
 
-  const today = useMemo(() => new Date(), []);
+  const today = useMemo(() => startOfDay(new Date()), []);
 
   // Calculate date range with 2-week padding
   const { minDate, maxDate, totalDays } = useMemo(() => {
@@ -72,7 +76,7 @@ export default function Timeline() {
       const max = addDays(today, 14);
       return { minDate: min, maxDate: max, totalDays: 28 };
     }
-    const dates = datedTasks.map((t) => parseISO(t.dueDate!));
+    const dates = datedTasks.map((t) => startOfDay(parseISO(t.dueDate!)));
     const earliest = dates.reduce((a, b) => (a < b ? a : b));
     const latest = dates.reduce((a, b) => (a > b ? a : b));
     const min = addDays(earliest < today ? earliest : today, -14);
@@ -95,21 +99,23 @@ export default function Timeline() {
     [minDate, maxDate]
   );
 
-  // Weekly date ticks
-  const weeks = useMemo(
+  // Daily date ticks
+  const days = useMemo(
     () =>
-      eachWeekOfInterval({ start: minDate, end: maxDate }, { weekStartsOn: 1 }).map((w) => ({
-        date: w,
-        label: format(w, "d"),
-        offset: Math.max(0, differenceInDays(w, minDate)),
+      eachDayOfInterval({ start: minDate, end: maxDate }).map((d) => ({
+        date: d,
+        dayNum: format(d, "d"),
+        offset: differenceInDays(d, minDate),
+        isMonday: getDay(d) === 1,
+        isToday: differenceInDays(d, today) === 0,
       })),
-    [minDate, maxDate]
+    [minDate, maxDate, today]
   );
 
-  // Today line position
-  const todayOffset = useMemo(
-    () => (differenceInDays(today, minDate) / totalDays) * 100,
-    [today, minDate, totalDays]
+  // Today position for auto-scroll (pixel-based)
+  const todayPixelOffset = useMemo(
+    () => differenceInDays(today, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2,
+    [today, minDate]
   );
 
   // Group tasks by project
@@ -152,10 +158,10 @@ export default function Timeline() {
   useEffect(() => {
     if (!isMobile && scrollRef.current) {
       const container = scrollRef.current;
-      const scrollTarget = (todayOffset / 100) * container.scrollWidth - container.clientWidth / 2;
+      const scrollTarget = todayPixelOffset - container.clientWidth / 2;
       container.scrollLeft = Math.max(0, scrollTarget);
     }
-  }, [todayOffset, isMobile, projectRows.length]);
+  }, [todayPixelOffset, isMobile, projectRows.length]);
 
   const openTask = (task: Task) => {
     setSelectedTask(task);
@@ -270,7 +276,6 @@ export default function Timeline() {
   }
 
   // ── Desktop horizontal timeline ──
-  const PIXELS_PER_DAY = 40;
   const timelineWidth = totalDays * PIXELS_PER_DAY;
 
   return (
@@ -308,9 +313,9 @@ export default function Timeline() {
         <div className="flex-1 flex overflow-hidden">
           {/* Fixed project names column */}
           <div className="w-48 shrink-0 border-r bg-background z-10">
-            {/* Header spacer: month row + week row */}
+            {/* Header spacer: month row + day row */}
             <div className="h-6 border-b" />
-            <div className="h-5 border-b" />
+            <div className="h-6 border-b" />
             {projectRows.map(({ project }) => (
               <div
                 key={project.id}
@@ -347,35 +352,48 @@ export default function Timeline() {
                   </div>
                 ))}
               </div>
-              {/* Weekly date ticks row */}
-              <div className="h-5 border-b sticky top-6 bg-background z-20 relative">
-                {weeks.map((w, i) => (
+              {/* Daily date labels row */}
+              <div className="h-6 border-b sticky top-6 bg-background z-20 relative">
+                {days.map((d, i) => (
                   <div
                     key={i}
-                    className="absolute top-0 h-full flex items-end pb-0.5 justify-center text-[9px] text-muted-foreground"
+                    className={`absolute top-0 h-full flex items-center justify-center text-[10px] ${
+                      d.isToday
+                        ? "font-bold text-amber-600"
+                        : d.isMonday
+                        ? "font-semibold text-foreground"
+                        : "text-muted-foreground"
+                    }`}
                     style={{
-                      left: w.offset * PIXELS_PER_DAY,
-                      width: 7 * PIXELS_PER_DAY,
+                      left: d.offset * PIXELS_PER_DAY,
+                      width: PIXELS_PER_DAY,
                     }}
                   >
-                    {w.label}
+                    {d.dayNum}
                   </div>
-                ))}
-                {/* Vertical tick marks at each week */}
-                {weeks.map((w, i) => (
-                  <div
-                    key={`tick-${i}`}
-                    className="absolute top-0 h-full w-px bg-border"
-                    style={{ left: w.offset * PIXELS_PER_DAY }}
-                  />
                 ))}
               </div>
 
-              {/* Today line */}
+              {/* Vertical day gridlines through data area */}
+              {days.map((d, i) => (
+                <div
+                  key={`grid-${i}`}
+                  className={`absolute w-px ${
+                    d.isMonday ? "bg-border" : "bg-border/40"
+                  }`}
+                  style={{
+                    left: d.offset * PIXELS_PER_DAY,
+                    top: 48, // below both header rows (6+6 = 12 tailwind units = 48px)
+                    bottom: 0,
+                  }}
+                />
+              ))}
+
+              {/* Today line — centered in today's column */}
               <div
                 className="absolute top-0 bottom-0 w-0.5 bg-amber-500 z-10"
                 style={{
-                  left: differenceInDays(today, minDate) * PIXELS_PER_DAY,
+                  left: differenceInDays(today, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2,
                 }}
               >
                 <div className="absolute -top-0 -left-2 px-1 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-b">
@@ -390,9 +408,10 @@ export default function Timeline() {
                   className="h-12 border-b relative flex items-center"
                 >
                   {projectTasks.map((task) => {
-                    const taskDate = parseISO(task.dueDate!);
-                    const offset =
-                      differenceInDays(taskDate, minDate) * PIXELS_PER_DAY;
+                    const taskDate = startOfDay(parseISO(task.dueDate!));
+                    const dayOffset = differenceInDays(taskDate, minDate);
+                    // Center dot within its day column
+                    const offset = dayOffset * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
                     const isHighPriority = task.priority === "high";
                     const isDone = task.status === "done";
                     const isOverdue =
