@@ -23,6 +23,7 @@ import {
   parseISO,
   startOfMonth,
   eachMonthOfInterval,
+  eachWeekOfInterval,
 } from "date-fns";
 import {
   ArrowLeft,
@@ -90,6 +91,17 @@ export default function Timeline() {
         date: m,
         label: format(m, "MMM yyyy"),
         offset: Math.max(0, differenceInDays(m, minDate)),
+      })),
+    [minDate, maxDate]
+  );
+
+  // Weekly date ticks
+  const weeks = useMemo(
+    () =>
+      eachWeekOfInterval({ start: minDate, end: maxDate }, { weekStartsOn: 1 }).map((w) => ({
+        date: w,
+        label: format(w, "d"),
+        offset: Math.max(0, differenceInDays(w, minDate)),
       })),
     [minDate, maxDate]
   );
@@ -296,8 +308,9 @@ export default function Timeline() {
         <div className="flex-1 flex overflow-hidden">
           {/* Fixed project names column */}
           <div className="w-48 shrink-0 border-r bg-background z-10">
-            {/* Month header spacer */}
-            <div className="h-8 border-b" />
+            {/* Header spacer: month row + week row */}
+            <div className="h-6 border-b" />
+            <div className="h-5 border-b" />
             {projectRows.map(({ project }) => (
               <div
                 key={project.id}
@@ -320,8 +333,8 @@ export default function Timeline() {
             ref={scrollRef}
           >
             <div style={{ width: timelineWidth, minHeight: "100%" }} className="relative">
-              {/* Month labels header */}
-              <div className="h-8 border-b sticky top-0 bg-background z-20 relative">
+              {/* Month labels row */}
+              <div className="h-6 border-b sticky top-0 bg-background z-20 relative">
                 {months.map((m, i) => (
                   <div
                     key={i}
@@ -332,6 +345,29 @@ export default function Timeline() {
                   >
                     {m.label}
                   </div>
+                ))}
+              </div>
+              {/* Weekly date ticks row */}
+              <div className="h-5 border-b sticky top-6 bg-background z-20 relative">
+                {weeks.map((w, i) => (
+                  <div
+                    key={i}
+                    className="absolute top-0 h-full flex items-end pb-0.5 justify-center text-[9px] text-muted-foreground"
+                    style={{
+                      left: w.offset * PIXELS_PER_DAY,
+                      width: 7 * PIXELS_PER_DAY,
+                    }}
+                  >
+                    {w.label}
+                  </div>
+                ))}
+                {/* Vertical tick marks at each week */}
+                {weeks.map((w, i) => (
+                  <div
+                    key={`tick-${i}`}
+                    className="absolute top-0 h-full w-px bg-border"
+                    style={{ left: w.offset * PIXELS_PER_DAY }}
+                  />
                 ))}
               </div>
 

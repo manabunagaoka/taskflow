@@ -28,6 +28,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { formatDistanceToNow, isPast, isToday, parseISO, differenceInDays } from "date-fns";
 import { useLocation, Link } from "wouter";
 
@@ -127,6 +128,15 @@ export default function Workspace() {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
   // Project sort
   const [projectSort, setProjectSort] = useState<"manual" | "alpha-asc" | "alpha-desc" | "owner">("manual");
@@ -876,7 +886,7 @@ export default function Workspace() {
                   <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0" />
                   <Button
                     size="icon" variant="ghost" className="h-5 w-5 opacity-0 group-hover:opacity-100 shrink-0"
-                    onClick={() => { if (confirm(`Remove "${f.name}"?`)) deleteFolder.mutate(f.id); }}
+                    onClick={() => { setConfirmDialog({ open: true, title: "Remove link", description: `Remove "${f.name}"?`, confirmLabel: "Remove", onConfirm: () => deleteFolder.mutate(f.id) }); }}
                   >
                     <Trash2 className="h-3 w-3 text-destructive" />
                   </Button>
@@ -912,7 +922,7 @@ export default function Workspace() {
               />
               <Button
                 size="icon" variant="ghost" className="shrink-0 text-destructive h-7 w-7"
-                onClick={() => { if (confirm("Delete this task?")) deleteTask.mutate(selectedTask.id); }}
+                onClick={() => { setConfirmDialog({ open: true, title: "Delete task", description: "This task will be permanently deleted.", confirmLabel: "Delete", onConfirm: () => deleteTask.mutate(selectedTask.id) }); }}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
@@ -1194,24 +1204,21 @@ export default function Workspace() {
   return (
     <div className="flex flex-col h-screen w-full">
       {/* ===== HEADER ===== */}
-      <header className="flex items-center px-4 py-2 border-b shrink-0 bg-background relative">
-        {/* Left: Logo */}
-        <div className="flex items-center gap-2 shrink-0">
+      <header className="flex items-center px-4 py-2 border-b shrink-0 bg-background">
+        {/* Left: Logo + Team name */}
+        <div className="flex items-center gap-2 shrink-0 min-w-0">
           <svg width="22" height="22" viewBox="0 0 28 28" fill="none" aria-label="TaskFlow logo">
             <rect width="28" height="28" rx="6" fill="currentColor" className="text-primary" />
             <path d="M8 10h12M8 14h8M8 18h10" stroke="white" strokeWidth="2" strokeLinecap="round" />
             <circle cx="21" cy="18" r="2.5" fill="white" />
           </svg>
           <span className="text-sm font-semibold hidden sm:inline">TaskFlow</span>
-        </div>
-        {/* Center: Team name */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1.5">
           <button
-            className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-1.5 hover:opacity-80 transition-opacity min-w-0"
             onClick={() => setTeamDialogOpen(true)}
           >
-            <Users className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-sm font-medium">{teamName || teamSlug}</span>
+            <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="text-sm font-medium truncate">{teamName || teamSlug}</span>
           </button>
         </div>
         {/* Right: Controls */}
@@ -1457,7 +1464,7 @@ export default function Workspace() {
                 <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditMember(m)}>
                   <Pencil className="h-3 w-3" />
                 </Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { if (confirm(`Remove ${m.name}?`)) deleteMember.mutate(m.id); }}>
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setConfirmDialog({ open: true, title: "Remove member", description: `Remove ${m.name} from the team?`, confirmLabel: "Remove", onConfirm: () => deleteMember.mutate(m.id) }); }}>
                   <Trash2 className="h-3 w-3 text-destructive" />
                 </Button>
               </div>
@@ -1475,11 +1482,7 @@ export default function Workspace() {
                 onClick={() => {
                   const me = members.find((m) => m.name === currentUser);
                   if (!me) { toast({ title: "Select yourself first", description: "Use the user selector to pick your profile.", variant: "destructive" }); return; }
-                  if (confirm("Leave this team? Your profile will be removed. If you're the last member, the team will also be deleted.")) {
-                    deleteMember.mutate(me.id, {
-                      onSuccess: () => { setTeamDialogOpen(false); navigate("/"); },
-                    });
-                  }
+                  setConfirmDialog({ open: true, title: "Leave team", description: "Your profile will be removed. If you're the last member, the team will also be deleted.", confirmLabel: "Leave", onConfirm: () => { deleteMember.mutate(me.id, { onSuccess: () => { setTeamDialogOpen(false); navigate("/"); } }); } });
                 }}
               >
                 <LogOut className="h-3 w-3 mr-1" />Leave
@@ -1493,20 +1496,7 @@ export default function Workspace() {
                       size="sm"
                       className="text-xs text-destructive hover:text-destructive"
                       onClick={() => {
-                        if (confirm("Delete this team and ALL its data (projects, tasks, members)? This cannot be undone.")) {
-                          fetch(`${apiBase}`, {
-                            method: "DELETE",
-                            headers: { "x-member-id": String(me.id) },
-                          }).then((res) => {
-                            if (res.ok) {
-                              toast({ title: "Team deleted" });
-                              setTeamDialogOpen(false);
-                              navigate("/");
-                            } else {
-                              toast({ title: "Failed to delete team", variant: "destructive" });
-                            }
-                          });
-                        }
+                        setConfirmDialog({ open: true, title: "Delete team", description: "Delete this team and ALL its data (projects, tasks, members)? This cannot be undone.", confirmLabel: "Delete Team", onConfirm: () => { fetch(`${apiBase}`, { method: "DELETE", headers: { "x-member-id": String(me.id) } }).then((res) => { if (res.ok) { toast({ title: "Team deleted" }); setTeamDialogOpen(false); navigate("/"); } else { toast({ title: "Failed to delete team", variant: "destructive" }); } }); } });
                       }}
                     >
                       <Trash2 className="h-3 w-3 mr-1" />Delete Team
@@ -1555,9 +1545,7 @@ export default function Workspace() {
                   variant="destructive"
                   size="sm"
                   onClick={() => {
-                    if (confirm("Remove passkey? Anyone will be able to join without one.")) {
-                      updatePasskey.mutate("");
-                    }
+                    setConfirmDialog({ open: true, title: "Remove passkey", description: "Anyone will be able to join without a passkey.", confirmLabel: "Remove", onConfirm: () => updatePasskey.mutate("") });
                   }}
                   disabled={updatePasskey.isPending}
                 >
@@ -1737,9 +1725,33 @@ export default function Workspace() {
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <MessageSquare className="h-3.5 w-3.5" /> Team Chat
             </span>
-            <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setChatOpen(false)}>
-              <span className="text-xs">✕</span>
-            </Button>
+            <div className="flex items-center gap-1">
+              {chatMessages.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-[10px] text-destructive hover:text-destructive px-1.5"
+                  onClick={() => {
+                    setConfirmDialog({
+                      open: true,
+                      title: "Clear all chats",
+                      description: "All chats will be gone forever. This cannot be undone.",
+                      confirmLabel: "Clear All",
+                      onConfirm: () => {
+                        apiRequest("DELETE", `${apiBase}/messages`).then(() => {
+                          queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
+                        });
+                      },
+                    });
+                  }}
+                >
+                  Clear All
+                </Button>
+              )}
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setChatOpen(false)}>
+                <span className="text-xs">✕</span>
+              </Button>
+            </div>
           </div>
           <ScrollArea className="flex-1 px-3 py-2">
             <div className="space-y-3">
@@ -1769,9 +1781,16 @@ export default function Workspace() {
                           <button
                             className="opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => {
-                              if (!window.confirm("Delete this message?")) return;
-                              apiRequest("DELETE", `${apiBase}/messages/${msg.id}`).then(() => {
-                                queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
+                              setConfirmDialog({
+                                open: true,
+                                title: "Delete message",
+                                description: "This message will be permanently deleted.",
+                                confirmLabel: "Delete",
+                                onConfirm: () => {
+                                  apiRequest("DELETE", `${apiBase}/messages/${msg.id}`).then(() => {
+                                    queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
+                                  });
+                                },
                               });
                             }}
                           >
@@ -1852,6 +1871,16 @@ export default function Workspace() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant="destructive"
+        onConfirm={confirmDialog.onConfirm}
+      />
     </div>
   );
 }

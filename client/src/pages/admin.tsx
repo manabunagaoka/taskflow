@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { Trash2, ExternalLink, ChevronDown, ChevronRight, Plus, Pencil, Moon, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 interface TeamWithCounts {
   id: number;
@@ -90,6 +91,9 @@ function TeamMembers({ teamId, adminKey }: { teamId: number; adminKey: string })
   const queryClient = useQueryClient();
   const [editMember, setEditMember] = useState<Member | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean; title: string; description: string; confirmLabel?: string; onConfirm: () => void;
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
   const { data: members = [], isLoading } = useQuery<Member[]>({
     queryKey: ["admin", "members", teamId],
@@ -164,7 +168,7 @@ function TeamMembers({ teamId, adminKey }: { teamId: number; adminKey: string })
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditMember(m)}><Pencil className="h-3 w-3" /></Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => { if (confirm(`Remove ${m.name}?`)) deleteMember.mutate(m.id); }}><Trash2 className="h-3 w-3" /></Button>
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => { setConfirmDialog({ open: true, title: "Remove member", description: `Remove ${m.name}?`, confirmLabel: "Remove", onConfirm: () => deleteMember.mutate(m.id) }); }}><Trash2 className="h-3 w-3" /></Button>
           </div>
         </div>
       ))}
@@ -173,6 +177,15 @@ function TeamMembers({ teamId, adminKey }: { teamId: number; adminKey: string })
       </div>
       <MemberDialog open={!!editMember} onOpenChange={(o) => { if (!o) setEditMember(null); }} title="Edit Member" initial={editMember || undefined} onSubmit={(data) => editMember && updateMember.mutate({ ...data, id: editMember.id })} isPending={updateMember.isPending} />
       <MemberDialog open={addOpen} onOpenChange={setAddOpen} title="Add Member" onSubmit={(data) => addMember.mutate({ ...data, color: COLORS[Math.floor(Math.random() * COLORS.length)] })} isPending={addMember.isPending} />
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant="destructive"
+        onConfirm={confirmDialog.onConfirm}
+      />
     </div>
   );
 }
@@ -184,6 +197,9 @@ export default function Admin() {
   const queryClient = useQueryClient();
   const { theme, toggleTheme } = useTheme();
   const [expandedTeam, setExpandedTeam] = useState<number | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean; title: string; description: string; confirmLabel?: string; onConfirm: () => void;
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
   const { data: teams, isLoading, error } = useQuery<TeamWithCounts[]>({
     queryKey: ["admin", "teams", key],
@@ -299,9 +315,7 @@ export default function Admin() {
                               size="icon"
                               className="h-7 w-7 text-destructive hover:text-destructive"
                               onClick={() => {
-                                if (confirm(`Delete team "${team.name}" and all its data? This cannot be undone.`)) {
-                                  deleteMutation.mutate(team.id);
-                                }
+                                setConfirmDialog({ open: true, title: "Delete team", description: `Delete team "${team.name}" and all its data? This cannot be undone.`, confirmLabel: "Delete Team", onConfirm: () => deleteMutation.mutate(team.id) });
                               }}
                               title="Delete team"
                             >
@@ -325,6 +339,15 @@ export default function Admin() {
           </CardContent>
         </Card>
       </div>
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant="destructive"
+        onConfirm={confirmDialog.onConfirm}
+      />
     </div>
   );
 }

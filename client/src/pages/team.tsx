@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Plus, Pencil, Trash2, Users, LogOut, Mail, Bot } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const MEMBER_COLORS = ["#4F98A3", "#A84B2F", "#437A22", "#7A39BB", "#006494", "#964219", "#A12C7B", "#D19900"];
 
@@ -37,6 +38,9 @@ export default function Team() {
   const [memberType, setMemberType] = useState("person");
   const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
   const [leaveMemberId, setLeaveMemberId] = useState<number | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean; title: string; description: string; confirmLabel?: string; onConfirm: () => void;
+  }>({ open: false, title: "", description: "", onConfirm: () => {} });
   const { apiBase } = useTeam();
   const [, navigate] = useLocation();
 
@@ -204,7 +208,7 @@ export default function Team() {
                       size="icon"
                       variant="ghost"
                       onClick={() => {
-                        if (confirm(`Remove ${m.name} from the team?`)) deleteMember.mutate(m.id);
+                        setConfirmDialog({ open: true, title: "Remove member", description: `Remove ${m.name} from the team?`, confirmLabel: "Remove", onConfirm: () => deleteMember.mutate(m.id) });
                       }}
                       data-testid={`button-delete-member-${m.id}`}
                     >
@@ -339,6 +343,15 @@ export default function Team() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onOpenChange={(open) => setConfirmDialog((prev) => ({ ...prev, open }))}
+        title={confirmDialog.title}
+        description={confirmDialog.description}
+        confirmLabel={confirmDialog.confirmLabel}
+        variant="destructive"
+        onConfirm={confirmDialog.onConfirm}
+      />
     </div>
   );
 }

@@ -742,6 +742,12 @@ app.post(`${t}/messages`, resolveTeam, async (req, res) => {
   res.status(201).json(msg);
 });
 
+app.delete(`${t}/messages`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  await db.delete(messages).where(eq(messages.teamId, team.id));
+  res.status(204).send();
+});
+
 app.delete(`${t}/messages/:id`, resolveTeam, async (req, res) => {
   const team = (req as any).team;
   const id = parseInt(req.params.id);

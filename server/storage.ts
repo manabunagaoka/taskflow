@@ -73,6 +73,7 @@ export interface IStorage {
   getMessages(teamId: number): Promise<Message[]>;
   createMessage(message: InsertMessage): Promise<Message>;
   deleteMessage(teamId: number, id: number): Promise<boolean>;
+  deleteAllMessages(teamId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -306,6 +307,9 @@ export class DatabaseStorage implements IStorage {
   async deleteMessage(teamId: number, id: number): Promise<boolean> {
     const result = await db.delete(messages).where(and(eq(messages.id, id), eq(messages.teamId, teamId))).returning();
     return result.length > 0;
+  }
+  async deleteAllMessages(teamId: number): Promise<void> {
+    await db.delete(messages).where(eq(messages.teamId, teamId));
   }
 }
 
