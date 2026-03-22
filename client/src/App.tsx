@@ -11,12 +11,23 @@ import NotFound from "@/pages/not-found";
 import Workspace from "@/pages/workspace";
 import Landing from "@/pages/landing";
 import Admin from "@/pages/admin";
+import Timeline from "@/pages/timeline";
 
 function TeamLayout() {
   return (
     <TeamProvider>
       <UserProvider>
         <Workspace />
+      </UserProvider>
+    </TeamProvider>
+  );
+}
+
+function TeamTimeline() {
+  return (
+    <TeamProvider>
+      <UserProvider>
+        <Timeline />
       </UserProvider>
     </TeamProvider>
   );
@@ -31,6 +42,7 @@ function App() {
             <Switch>
               <Route path="/" component={Landing} />
               <Route path="/admin/:key" component={Admin} />
+              <Route path="/t/:teamSlug/timeline" component={TeamTimeline} />
               <Route path="/t/:teamSlug/*" component={TeamLayout} />
               <Route path="/t/:teamSlug" component={TeamLayout} />
               <Route component={NotFound} />

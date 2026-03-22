@@ -1762,6 +1762,7 @@ export default function Workspace() {
                           <button
                             className="opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => {
+                              if (!window.confirm("Delete this message?")) return;
                               apiRequest("DELETE", `${apiBase}/messages/${msg.id}`).then(() => {
                                 queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
                               });

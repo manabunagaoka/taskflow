@@ -638,26 +638,20 @@ export async function registerRoutes(
     if (!authorName || !content) return res.status(400).json({ error: "authorName and content required" });
     const msg = await storage.createMessage({ teamId: team.id, authorName, content });
 
-    // Check for @mentions and create notifications
-    const mentions = content.match(/@(\w+(?:\s\w+)?)/g);
-    if (mentions) {
-      const allMembers = await storage.getMembers(team.id);
-      for (const mention of mentions) {
-        const mentionedName = mention.replace("@", "").trim();
-        const member = allMembers.find((m: any) =>
-          m.name.toLowerCase() === mentionedName.toLowerCase()
-        );
-        if (member) {
-          await storage.createNotification({
-            teamId: team.id,
-            recipientName: member.name,
-            title: "You were mentioned in chat",
-            message: `${authorName} mentioned you in chat: "${content}"`,
-            taskId: null,
-            projectId: null,
-            read: "false",
-          });
-        }
+    // Check for @mentions and create notifications (case-insensitive per-member scan)
+    const allMembers = await storage.getMembers(team.id);
+    const contentLower = content.toLowerCase();
+    for (const member of allMembers) {
+      if (member.name !== authorName && contentLower.includes(`@${member.name.toLowerCase()}`)) {
+        await storage.createNotification({
+          teamId: team.id,
+          recipientName: member.name,
+          title: "You were mentioned in chat",
+          message: `${authorName} mentioned you in chat: "${content}"`,
+          taskId: null,
+          projectId: null,
+          read: "false",
+        });
       }
     }
 

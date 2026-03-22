@@ -2,7 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useTeam } from "@/lib/team-context";
 import { useCurrentUser } from "@/context/user-context";
-import { Bell, Check } from "lucide-react";
+import { Bell, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,15 +12,18 @@ export function NotificationBell() {
   const { apiBase } = useTeam();
   const { currentUser } = useCurrentUser();
 
-const { data: allNotifications = [] } = useQuery<any[]>({
+  const { data: allNotifications = [] } = useQuery<any[]>({
     queryKey: [`${apiBase}/notifications/${currentUser}`],
     enabled: !!currentUser,
     refetchInterval: 30000,
   });
 
   // Exclude chat mentions — those show on the chat icon instead
-  const notifications = allNotifications.filter((n: any) => n.title !== "You were mentioned in chat");
-  const unreadCount = notifications.filter((n: any) => n.read === "false").length;
+  // Only show unread notifications (dismissed ones disappear)
+  const notifications = allNotifications.filter(
+    (n: any) => n.title !== "You were mentioned in chat" && n.read === "false"
+  );
+  const unreadCount = notifications.length;
 
   const markRead = useMutation({
     mutationFn: async (id: number) => {
@@ -65,7 +68,7 @@ const { data: allNotifications = [] } = useQuery<any[]>({
               onClick={() => markAllRead.mutate()}
             >
               <Check className="h-3 w-3 mr-1" />
-              Mark all read
+              Clear all
             </Button>
           )}
         </div>
@@ -75,19 +78,12 @@ const { data: allNotifications = [] } = useQuery<any[]>({
           ) : (
             <div className="divide-y">
               {notifications.map((n: any) => (
-                <button
+                <div
                   key={n.id}
-                  className={`w-full text-left px-4 py-2.5 hover:bg-accent transition-colors ${
-                    n.read === "false" ? "bg-primary/5" : ""
-                  }`}
-                  onClick={() => {
-                    if (n.read === "false") markRead.mutate(n.id);
-                  }}
+                  className="group w-full text-left px-4 py-2.5 hover:bg-accent transition-colors bg-primary/5"
                 >
                   <div className="flex items-start gap-2">
-                    {n.read === "false" && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0" />
-                    )}
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium">{n.title}</p>
                       <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">{n.message}</p>
@@ -95,8 +91,18 @@ const { data: allNotifications = [] } = useQuery<any[]>({
                         {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                       </p>
                     </div>
+                    <button
+                      className="opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 p-0.5 rounded hover:bg-muted"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markRead.mutate(n.id);
+                      }}
+                      aria-label="Dismiss notification"
+                    >
+                      <X className="h-3 w-3 text-muted-foreground" />
+                    </button>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}
