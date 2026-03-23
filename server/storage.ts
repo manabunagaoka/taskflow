@@ -233,6 +233,7 @@ export class DatabaseStorage implements IStorage {
           progress: t.progress || 0,
           assigneeId: null,
           projectId: null,
+          startDate: t.startDate || null,
           dueDate: t.dueDate || null,
           order: t.order || 0,
         });

@@ -100,13 +100,19 @@ export function TaskCard({
           <span className="text-[11px] text-muted-foreground italic">Unassigned</span>
         )}
 
-        {task.dueDate && (
+        {(task.startDate || task.dueDate) && (
           <div className={`flex items-center gap-1 text-[11px] ${
             isOverdue ? "text-red-500" : isDueToday ? "text-amber-500" : "text-muted-foreground"
           }`}>
             {isOverdue && <AlertTriangle className="h-3 w-3" />}
             <Calendar className="h-3 w-3" />
-            <span className="tabular-nums">{format(parseISO(task.dueDate), "MMM d")}</span>
+            <span className="tabular-nums">
+              {task.startDate && task.dueDate
+                ? `${format(parseISO(task.startDate), "MMM d")} – ${format(parseISO(task.dueDate), "MMM d")}`
+                : task.startDate
+                  ? `From ${format(parseISO(task.startDate), "MMM d")}`
+                  : format(parseISO(task.dueDate!), "MMM d")}
+            </span>
           </div>
         )}
       </div>

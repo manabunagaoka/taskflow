@@ -442,6 +442,7 @@ export async function registerRoutes(
       "Status": t.status,
       "Priority": t.priority,
       "Progress (%)": t.progress,
+      "Start Date": t.startDate || "",
       "Due Date": t.dueDate || "",
     }));
 
@@ -563,6 +564,7 @@ export async function registerRoutes(
             progress: row["Progress (%)"] || 0,
             assigneeId,
             projectId,
+            startDate: row["Start Date"] || null,
             dueDate: row["Due Date"] || null,
             order: 0,
           });

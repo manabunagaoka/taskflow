@@ -65,6 +65,7 @@ export const tasks = pgTable("tasks", {
   assigneeId: integer("assignee_id"),
   assigneeIds: text("assignee_ids"),
   projectId: integer("project_id"),
+  startDate: text("start_date"),
   dueDate: text("due_date"),
   recurring: text("recurring").notNull().default("none"),
   order: integer("order").notNull().default(0),

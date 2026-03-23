@@ -60,9 +60,9 @@ export default function Timeline() {
     queryKey: [`${apiBase}/members`],
   });
 
-  // Only tasks with due dates appear on timeline
+  // Only tasks with at least one date appear on timeline
   const datedTasks = useMemo(
-    () => allTasks.filter((t) => t.dueDate),
+    () => allTasks.filter((t) => t.startDate || t.dueDate),
     [allTasks]
   );
   const undatedCount = allTasks.length - datedTasks.length;
@@ -76,7 +76,12 @@ export default function Timeline() {
       const max = addDays(today, 14);
       return { minDate: min, maxDate: max, totalDays: 28 };
     }
-    const dates = datedTasks.map((t) => startOfDay(parseISO(t.dueDate!)));
+    const dates = datedTasks.flatMap((t) => {
+      const d: Date[] = [];
+      if (t.startDate) d.push(startOfDay(parseISO(t.startDate)));
+      if (t.dueDate) d.push(startOfDay(parseISO(t.dueDate)));
+      return d;
+    });
     const earliest = dates.reduce((a, b) => (a < b ? a : b));
     const latest = dates.reduce((a, b) => (a > b ? a : b));
     const min = addDays(earliest < today ? earliest : today, -14);
@@ -140,7 +145,7 @@ export default function Timeline() {
     const later: (Task & { project?: Project })[] = [];
 
     for (const t of datedTasks) {
-      const d = parseISO(t.dueDate!);
+      const d = parseISO(t.dueDate || t.startDate!);
       const proj = projects.find((p) => p.id === t.projectId);
       const taskWithProj = { ...t, project: proj };
       if (isBefore(d, weekStart) || (!isAfter(d, weekEnd) && !isBefore(d, weekStart))) {
@@ -199,7 +204,12 @@ export default function Timeline() {
           <div className="space-y-1">
             {tasks.map((t) => {
               const isOverdue =
-                t.status !== "done" && isBefore(parseISO(t.dueDate!), today);
+                t.status !== "done" && t.dueDate && isBefore(parseISO(t.dueDate), today);
+              const dateLabel = t.startDate && t.dueDate
+                ? `${format(parseISO(t.startDate), "MMM d")} – ${format(parseISO(t.dueDate), "MMM d")}`
+                : t.dueDate
+                  ? `Due ${format(parseISO(t.dueDate), "MMM d")}`
+                  : `From ${format(parseISO(t.startDate!), "MMM d")}`;
               return (
                 <button
                   key={t.id}
@@ -219,7 +229,7 @@ export default function Timeline() {
                       {t.title}
                     </p>
                     <p className="text-[11px] text-muted-foreground">
-                      Due {format(parseISO(t.dueDate!), "MMM d")} —{" "}
+                      {dateLabel} —{" "}
                       {getMemberName(t)}
                     </p>
                   </div>
@@ -407,15 +417,62 @@ export default function Timeline() {
                   key={project.id}
                   className="h-12 border-b relative flex items-center"
                 >
-                  {projectTasks.map((task) => {
-                    const taskDate = startOfDay(parseISO(task.dueDate!));
-                    const dayOffset = differenceInDays(taskDate, minDate);
-                    // Center dot within its day column
-                    const offset = dayOffset * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
-                    const isHighPriority = task.priority === "high";
+              {projectTasks.map((task) => {
+                    const hasStart = !!task.startDate;
+                    const hasDue = !!task.dueDate;
+                    const taskEndDate = hasDue ? startOfDay(parseISO(task.dueDate!)) : null;
+                    const taskStartDate = hasStart ? startOfDay(parseISO(task.startDate!)) : taskEndDate!;
                     const isDone = task.status === "done";
                     const isOverdue =
-                      !isDone && isBefore(taskDate, today);
+                      !isDone && hasDue && isBefore(taskEndDate!, today);
+                    const isHighPriority = task.priority === "high";
+
+                    // Bar mode: both start and due dates
+                    if (hasStart && hasDue) {
+                      const startOffset = differenceInDays(taskStartDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
+                      const endOffset = differenceInDays(taskEndDate!, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
+                      const barWidth = Math.max(endOffset - startOffset, 6);
+                      const barHeight = isHighPriority ? 10 : 7;
+
+                      return (
+                        <Tooltip key={task.id}>
+                          <TooltipTrigger asChild>
+                            <button
+                              className="absolute rounded-full transition-transform hover:scale-y-150 focus:outline-none focus:ring-2 focus:ring-ring"
+                              style={{
+                                left: startOffset,
+                                width: barWidth,
+                                height: barHeight,
+                                top: `calc(50% - ${barHeight / 2}px)`,
+                                backgroundColor: isOverdue
+                                  ? "transparent"
+                                  : isDone
+                                  ? `${project.color}66`
+                                  : project.color,
+                                border: isOverdue
+                                  ? `2px solid #ef4444`
+                                  : isDone
+                                  ? `1px solid ${project.color}`
+                                  : "none",
+                              }}
+                              onClick={() => openTask(task)}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs max-w-xs">
+                            <p className="font-medium">{task.title}</p>
+                            <p className="text-muted-foreground">
+                              {format(taskStartDate, "MMM d")} – {format(taskEndDate!, "MMM d, yyyy")} —{" "}
+                              {getMemberName(task)}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    }
+
+                    // Dot mode: only one date
+                    const taskDate = taskEndDate || taskStartDate;
+                    const dayOffset = differenceInDays(taskDate, minDate);
+                    const offset = dayOffset * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
                     const size = isHighPriority ? 14 : 10;
 
                     return (
@@ -427,6 +484,7 @@ export default function Timeline() {
                               left: offset - size / 2,
                               width: size,
                               height: size,
+                              top: `calc(50% - ${size / 2}px)`,
                               backgroundColor: isOverdue
                                 ? "transparent"
                                 : isDone

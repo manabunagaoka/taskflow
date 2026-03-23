@@ -41,6 +41,7 @@ const taskFormSchema = z.object({
   assigneeId: z.string().optional(),
   assigneeIds: z.string().optional(),
   projectId: z.string().min(1, "Project is required"),
+  startDate: z.string().optional(),
   dueDate: z.string().optional(),
 });
 
@@ -81,6 +82,7 @@ export function TaskDialog({
       progress: 0,
       assigneeId: "",
       projectId: "",
+      startDate: "",
       dueDate: "",
     },
   });
@@ -96,6 +98,7 @@ export function TaskDialog({
         assigneeId: task.assigneeId ? String(task.assigneeId) : "",
         assigneeIds: (task as any).assigneeIds || "",
         projectId: task.projectId ? String(task.projectId) : "",
+        startDate: task.startDate || "",
         dueDate: task.dueDate || "",
       });
       // Parse assigneeIds
@@ -116,6 +119,7 @@ export function TaskDialog({
         assigneeId: "",
         assigneeIds: "",
         projectId: defaultProjectId ? String(defaultProjectId) : "",
+        startDate: "",
         dueDate: "",
       });
       setSelectedAssigneeIds([]);
@@ -136,6 +140,7 @@ export function TaskDialog({
         assigneeId: selectedAssigneeIds[0] || null,
         assigneeIds: selectedAssigneeIds.length > 0 ? JSON.stringify(selectedAssigneeIds) : null,
         projectId: parseInt(data.projectId),
+        startDate: data.startDate || null,
         dueDate: data.dueDate || null,
         description: data.description || null,
       };
@@ -156,6 +161,7 @@ export function TaskDialog({
         assigneeId: selectedAssigneeIds[0] || null,
         assigneeIds: selectedAssigneeIds.length > 0 ? JSON.stringify(selectedAssigneeIds) : null,
         projectId: parseInt(data.projectId),
+        startDate: data.startDate || null,
         dueDate: data.dueDate || null,
         description: data.description || null,
         changedBy: currentUser || "Someone",
@@ -367,14 +373,25 @@ export function TaskDialog({
             </div>
           </div>
 
-          <div>
-            <Label htmlFor="dueDate">Due Date</Label>
-            <Input
-              id="dueDate"
-              type="date"
-              {...form.register("dueDate")}
-              data-testid="input-task-due-date"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="startDate">Start Date</Label>
+              <Input
+                id="startDate"
+                type="date"
+                {...form.register("startDate")}
+                data-testid="input-task-start-date"
+              />
+            </div>
+            <div>
+              <Label htmlFor="dueDate">Due Date</Label>
+              <Input
+                id="dueDate"
+                type="date"
+                {...form.register("dueDate")}
+                data-testid="input-task-due-date"
+              />
+            </div>
           </div>
 
           <div>
