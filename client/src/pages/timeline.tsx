@@ -60,12 +60,12 @@ export default function Timeline() {
     queryKey: [`${apiBase}/members`],
   });
 
-  // Only tasks with at least one date appear on timeline
+  // All tasks appear on timeline — tasks without dates default to today
   const datedTasks = useMemo(
-    () => allTasks.filter((t) => t.startDate || t.dueDate),
+    () => allTasks,
     [allTasks]
   );
-  const undatedCount = allTasks.length - datedTasks.length;
+  const undatedCount = allTasks.filter((t) => !t.startDate && !t.dueDate).length;
 
   const today = useMemo(() => startOfDay(new Date()), []);
 
@@ -80,6 +80,7 @@ export default function Timeline() {
       const d: Date[] = [];
       if (t.startDate) d.push(startOfDay(parseISO(t.startDate)));
       if (t.dueDate) d.push(startOfDay(parseISO(t.dueDate)));
+      if (d.length === 0) d.push(today);
       return d;
     });
     const earliest = dates.reduce((a, b) => (a < b ? a : b));
@@ -145,7 +146,7 @@ export default function Timeline() {
     const later: (Task & { project?: Project })[] = [];
 
     for (const t of datedTasks) {
-      const d = parseISO(t.dueDate || t.startDate!);
+      const d = parseISO(t.dueDate || t.startDate || today.toISOString());
       const proj = projects.find((p) => p.id === t.projectId);
       const taskWithProj = { ...t, project: proj };
       if (isBefore(d, weekStart) || (!isAfter(d, weekEnd) && !isBefore(d, weekStart))) {
@@ -209,7 +210,9 @@ export default function Timeline() {
                 ? `${format(parseISO(t.startDate), "MMM d")} – ${format(parseISO(t.dueDate), "MMM d")}`
                 : t.dueDate
                   ? `Due ${format(parseISO(t.dueDate), "MMM d")}`
-                  : `From ${format(parseISO(t.startDate!), "MMM d")}`;
+                  : t.startDate
+                    ? `From ${format(parseISO(t.startDate), "MMM d")}`
+                    : "No dates set";
               return (
                 <button
                   key={t.id}
@@ -260,8 +263,7 @@ export default function Timeline() {
           <div className="py-2">
             {undatedCount > 0 && (
               <p className="text-xs text-muted-foreground px-4 py-2">
-                {undatedCount} task{undatedCount !== 1 ? "s" : ""} have no due
-                date
+                {undatedCount} task{undatedCount !== 1 ? "s" : ""} have no dates set
               </p>
             )}
             {renderGroup("This Week", weekGroups.thisWeek)}
@@ -269,7 +271,7 @@ export default function Timeline() {
             {renderGroup("Later", weekGroups.later)}
             {datedTasks.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-12">
-                No tasks with due dates
+                No tasks to display
               </p>
             )}
           </div>
@@ -304,7 +306,7 @@ export default function Timeline() {
         )}
         {undatedCount > 0 && (
           <span className="text-xs text-muted-foreground ml-2">
-            {undatedCount} task{undatedCount !== 1 ? "s" : ""} have no due date
+            {undatedCount} task{undatedCount !== 1 ? "s" : ""} have no dates set
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -316,7 +318,7 @@ export default function Timeline() {
       {datedTasks.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
           <p className="text-sm text-muted-foreground">
-            No tasks with due dates to display
+            No tasks to display
           </p>
         </div>
       ) : (
@@ -418,73 +420,38 @@ export default function Timeline() {
                   className="h-12 border-b relative flex items-center"
                 >
               {projectTasks.map((task) => {
-                    const hasStart = !!task.startDate;
-                    const hasDue = !!task.dueDate;
-                    const taskEndDate = hasDue ? startOfDay(parseISO(task.dueDate!)) : null;
-                    const taskStartDate = hasStart ? startOfDay(parseISO(task.startDate!)) : taskEndDate!;
+                    // Resolve start and end dates — every task is a bar
+                    const taskStartDate = task.startDate
+                      ? startOfDay(parseISO(task.startDate))
+                      : task.dueDate
+                        ? startOfDay(parseISO(task.dueDate))
+                        : today;
+                    const taskEndDate = task.dueDate
+                      ? startOfDay(parseISO(task.dueDate))
+                      : task.startDate
+                        ? addDays(startOfDay(parseISO(task.startDate)), 1)
+                        : addDays(today, 1);
                     const isDone = task.status === "done";
                     const isOverdue =
-                      !isDone && hasDue && isBefore(taskEndDate!, today);
+                      !isDone && task.dueDate && isBefore(taskEndDate, today);
                     const isHighPriority = task.priority === "high";
+                    const isRecurring = task.recurring === "daily";
 
-                    // Bar mode: both start and due dates
-                    if (hasStart && hasDue) {
-                      const startOffset = differenceInDays(taskStartDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
-                      const endOffset = differenceInDays(taskEndDate!, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
-                      const barWidth = Math.max(endOffset - startOffset, 6);
-                      const barHeight = isHighPriority ? 10 : 7;
-
-                      return (
-                        <Tooltip key={task.id}>
-                          <TooltipTrigger asChild>
-                            <button
-                              className="absolute rounded-full transition-transform hover:scale-y-150 focus:outline-none focus:ring-2 focus:ring-ring"
-                              style={{
-                                left: startOffset,
-                                width: barWidth,
-                                height: barHeight,
-                                top: `calc(50% - ${barHeight / 2}px)`,
-                                backgroundColor: isOverdue
-                                  ? "transparent"
-                                  : isDone
-                                  ? `${project.color}66`
-                                  : project.color,
-                                border: isOverdue
-                                  ? `2px solid #ef4444`
-                                  : isDone
-                                  ? `1px solid ${project.color}`
-                                  : "none",
-                              }}
-                              onClick={() => openTask(task)}
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs max-w-xs">
-                            <p className="font-medium">{task.title}</p>
-                            <p className="text-muted-foreground">
-                              {format(taskStartDate, "MMM d")} – {format(taskEndDate!, "MMM d, yyyy")} —{" "}
-                              {getMemberName(task)}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      );
-                    }
-
-                    // Dot mode: only one date
-                    const taskDate = taskEndDate || taskStartDate;
-                    const dayOffset = differenceInDays(taskDate, minDate);
-                    const offset = dayOffset * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
-                    const size = isHighPriority ? 14 : 10;
+                    const startOffset = differenceInDays(taskStartDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
+                    const endOffset = differenceInDays(taskEndDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
+                    const barWidth = Math.max(endOffset - startOffset, PIXELS_PER_DAY / 2);
+                    const barHeight = isHighPriority ? 10 : 7;
 
                     return (
                       <Tooltip key={task.id}>
                         <TooltipTrigger asChild>
                           <button
-                            className="absolute rounded-full transition-transform hover:scale-150 focus:outline-none focus:ring-2 focus:ring-ring"
+                            className="absolute rounded-full transition-transform hover:scale-y-150 focus:outline-none focus:ring-2 focus:ring-ring"
                             style={{
-                              left: offset - size / 2,
-                              width: size,
-                              height: size,
-                              top: `calc(50% - ${size / 2}px)`,
+                              left: startOffset,
+                              width: barWidth,
+                              height: barHeight,
+                              top: `calc(50% - ${barHeight / 2}px)`,
                               backgroundColor: isOverdue
                                 ? "transparent"
                                 : isDone
@@ -495,14 +462,15 @@ export default function Timeline() {
                                 : isDone
                                 ? `1px solid ${project.color}`
                                 : "none",
+                              borderStyle: isRecurring ? "dashed" : undefined,
                             }}
                             onClick={() => openTask(task)}
                           />
                         </TooltipTrigger>
                         <TooltipContent side="top" className="text-xs max-w-xs">
-                          <p className="font-medium">{task.title}</p>
+                          <p className="font-medium">{task.title}{isRecurring ? " 🔁" : ""}</p>
                           <p className="text-muted-foreground">
-                            {format(taskDate, "MMM d, yyyy")} —{" "}
+                            {format(taskStartDate, "MMM d")} – {format(taskEndDate, "MMM d, yyyy")} —{" "}
                             {getMemberName(task)}
                           </p>
                         </TooltipContent>

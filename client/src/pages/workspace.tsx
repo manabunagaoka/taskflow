@@ -1044,6 +1044,15 @@ export default function Workspace() {
                 </Select>
               </div>
               <div>
+                <Label className="text-xs text-muted-foreground">Start Date</Label>
+                <Input
+                  type="date"
+                  className="mt-1 h-8 text-sm"
+                  value={selectedTask.startDate || ""}
+                  onChange={(e) => updateTask.mutate({ id: selectedTask.id, startDate: e.target.value || null })}
+                />
+              </div>
+              <div>
                 <Label className={`text-xs ${(selectedTask as any).recurring === "daily" ? "text-muted-foreground/50" : "text-muted-foreground"}`}>Due Date</Label>
                 <Input
                   type="date"
