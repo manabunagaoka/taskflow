@@ -124,7 +124,7 @@ export default function Timeline() {
     [today, minDate]
   );
 
-  // Group tasks by project
+  // Group tasks by project — each task gets its own row
   const projectRows = useMemo(() => {
     return projects
       .filter((p) => datedTasks.some((t) => t.projectId === p.id))
@@ -323,23 +323,35 @@ export default function Timeline() {
         </div>
       ) : (
         <div className="flex-1 flex overflow-hidden">
-          {/* Fixed project names column */}
+          {/* Fixed project/task names column */}
           <div className="w-48 shrink-0 border-r bg-background z-10">
             {/* Header spacer: month row + day row */}
             <div className="h-6 border-b" />
             <div className="h-6 border-b" />
-            {projectRows.map(({ project }) => (
-              <div
-                key={project.id}
-                className="h-12 flex items-center gap-2 px-3 border-b"
-              >
-                <div
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: project.color }}
-                />
-                <span className="text-sm font-medium truncate">
-                  {project.name}
-                </span>
+            {projectRows.map(({ project, tasks: projectTasks }) => (
+              <div key={project.id}>
+                {/* Project header row */}
+                <div className="h-8 flex items-center gap-2 px-3 border-b bg-muted/30">
+                  <div
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: project.color }}
+                  />
+                  <span className="text-xs font-semibold truncate uppercase tracking-wide text-muted-foreground">
+                    {project.name}
+                  </span>
+                </div>
+                {/* One row per task */}
+                {projectTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="h-9 flex items-center px-3 pl-6 border-b cursor-pointer hover:bg-accent/50 transition-colors"
+                    onClick={() => openTask(task)}
+                  >
+                    <span className="text-xs truncate">
+                      {task.title}
+                    </span>
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -415,27 +427,29 @@ export default function Timeline() {
 
               {/* Project rows */}
               {projectRows.map(({ project, tasks: projectTasks }) => (
-                <div
-                  key={project.id}
-                  className="h-12 border-b relative flex items-center"
-                >
-              {projectTasks.map((task) => {
+                <div key={project.id}>
+                  {/* Project header row */}
+                  <div className="h-8 border-b bg-muted/30" />
+                  {/* Individual task rows */}
+                  {projectTasks.map((task) => {
                     // Resolve start and end dates — every task is a bar
+                    const isRecurring = task.recurring === "daily";
                     const taskStartDate = task.startDate
                       ? startOfDay(parseISO(task.startDate))
                       : task.dueDate
                         ? startOfDay(parseISO(task.dueDate))
                         : today;
-                    const taskEndDate = task.dueDate
-                      ? startOfDay(parseISO(task.dueDate))
-                      : task.startDate
-                        ? addDays(startOfDay(parseISO(task.startDate)), 1)
-                        : addDays(today, 1);
+                    const taskEndDate = isRecurring
+                      ? maxDate
+                      : task.dueDate
+                        ? startOfDay(parseISO(task.dueDate))
+                        : task.startDate
+                          ? addDays(startOfDay(parseISO(task.startDate)), 1)
+                          : addDays(today, 1);
                     const isDone = task.status === "done";
                     const isOverdue =
-                      !isDone && task.dueDate && isBefore(taskEndDate, today);
+                      !isDone && !isRecurring && task.dueDate && isBefore(taskEndDate, today);
                     const isHighPriority = task.priority === "high";
-                    const isRecurring = task.recurring === "daily";
 
                     const startOffset = differenceInDays(taskStartDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
                     const endOffset = differenceInDays(taskEndDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
@@ -443,38 +457,40 @@ export default function Timeline() {
                     const barHeight = isHighPriority ? 10 : 7;
 
                     return (
-                      <Tooltip key={task.id}>
-                        <TooltipTrigger asChild>
-                          <button
-                            className="absolute rounded-full transition-transform hover:scale-y-150 focus:outline-none focus:ring-2 focus:ring-ring"
-                            style={{
-                              left: startOffset,
-                              width: barWidth,
-                              height: barHeight,
-                              top: `calc(50% - ${barHeight / 2}px)`,
-                              backgroundColor: isOverdue
-                                ? "transparent"
-                                : isDone
-                                ? `${project.color}66`
-                                : project.color,
-                              border: isOverdue
-                                ? `2px solid #ef4444`
-                                : isDone
-                                ? `1px solid ${project.color}`
-                                : "none",
-                              borderStyle: isRecurring ? "dashed" : undefined,
-                            }}
-                            onClick={() => openTask(task)}
-                          />
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="text-xs max-w-xs">
-                          <p className="font-medium">{task.title}{isRecurring ? " 🔁" : ""}</p>
-                          <p className="text-muted-foreground">
-                            {format(taskStartDate, "MMM d")} – {format(taskEndDate, "MMM d, yyyy")} —{" "}
-                            {getMemberName(task)}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
+                      <div key={task.id} className="h-9 border-b relative flex items-center">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              className="absolute rounded-full transition-transform hover:scale-y-150 focus:outline-none focus:ring-2 focus:ring-ring"
+                              style={{
+                                left: startOffset,
+                                width: barWidth,
+                                height: barHeight,
+                                top: `calc(50% - ${barHeight / 2}px)`,
+                                backgroundColor: isOverdue
+                                  ? "transparent"
+                                  : isDone
+                                  ? `${project.color}66`
+                                  : project.color,
+                                border: isOverdue
+                                  ? `2px solid #ef4444`
+                                  : isDone
+                                  ? `1px solid ${project.color}`
+                                  : "none",
+                                borderStyle: isRecurring ? "dashed" : undefined,
+                              }}
+                              onClick={() => openTask(task)}
+                            />
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-xs max-w-xs">
+                            <p className="font-medium">{task.title}{isRecurring ? " 🔁" : ""}</p>
+                            <p className="text-muted-foreground">
+                              {format(taskStartDate, "MMM d")} – {isRecurring ? "Ongoing" : format(taskEndDate, "MMM d, yyyy")} —{" "}
+                              {getMemberName(task)}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                     );
                   })}
                 </div>
