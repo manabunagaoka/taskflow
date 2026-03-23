@@ -33,9 +33,7 @@ export default function Landing() {
     setSlug(cleaned);
   }
 
-  const shareOrigin = typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? `${window.location.origin}${window.location.pathname}`
-    : "https://taskflow.manaboodle.com/";
+  const shareOrigin = `${window.location.origin}${window.location.pathname}`;
   const shareUrl = createdInviteToken ? `${shareOrigin}#/join/${createdInviteToken}` : `${shareOrigin}#/t/${createdSlug}`;
 
   async function handleCreate(e: React.FormEvent) {

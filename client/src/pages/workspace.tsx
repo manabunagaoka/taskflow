@@ -1602,9 +1602,7 @@ export default function Workspace() {
 
             {/* Share / Invite Link */}
             {teamInfo?.inviteToken && (() => {
-              const origin = typeof window !== "undefined" && window.location.hostname === "localhost"
-                ? `${window.location.origin}${window.location.pathname}`
-                : "https://taskflow.manaboodle.com/";
+              const origin = `${window.location.origin}${window.location.pathname}`;
               const inviteUrl = `${origin}#/join/${teamInfo.inviteToken}`;
               return (
                 <div className="space-y-2">

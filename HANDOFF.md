@@ -1,6 +1,6 @@
 # TaskFlow Handoff Document
-**Last updated: March 22, 2026**
-**Latest commit: `c7261a8` on `main`**
+**Last updated: March 23, 2026**
+**Latest commit: `383dca8` on `main`**
 **Deployed: Vercel (auto-deploy from GitHub)**
 **Live URL: taskflow-seven-smoky.vercel.app**
 
@@ -40,7 +40,7 @@ A **lightweight human-agent task coordination layer** — NOT a full PM tool. In
 ## Database Schema (8 tables in `shared/schema.ts`)
 | Table | Key Fields |
 |-------|-----------|
-| **teams** | id, name, slug, passkey, createdBy, createdAt |
+| **teams** | id, name, slug, passkey, **inviteToken** (unique UUID), createdBy, createdAt |
 | **members** | id, teamId, name, role, avatar, color, **type** (person/agent), email, phone, notifyEmail, notifyPhone |
 | **projects** | id, teamId, name, color, description, ownerId, **displayOrder** |
 | **tasks** | id, teamId, title, description, status, priority, progress, assigneeId, **assigneeIds** (JSON), projectId, dueDate, order, **recurring** (none/daily) |
@@ -121,6 +121,17 @@ A **lightweight human-agent task coordination layer** — NOT a full PM tool. In
 - **notification-bell.tsx** filters OUT chat mentions (line 23): only shows task/comment notifications
 - **Task assignment/completion**: Auto-notifications when assigned or completed
 
+### Invite Token Share Links (Working)
+- **Purpose**: Hide team slug and hosting domain from share URLs
+- On team creation, a random UUID `inviteToken` is generated and stored
+- Share link format: `origin/#/join/:token` (no slug or domain leaked)
+- `GET /api/join/:token` resolves token → returns team info (slug, name, hasPasskey)
+- Frontend `/join/:token` route auto-redirects (or shows passkey prompt if required)
+- **Regenerate**: Settings dialog → Share section → "Regenerate link" button
+- `POST /api/t/:slug/regenerate-invite` generates new UUID, invalidating old links
+- Existing teams backfilled with tokens during migration
+- Internal routing still uses slug (`/t/:teamSlug`) — token is only for sharing
+
 ### Deployment
 - Vercel at `api/index.ts` (inlined schema, all routes mirrored from routes.ts)
 - `vercel.json`: rewrites `/api/(.*)` → `/api` and `/(.*)` → `/index.html`
@@ -168,6 +179,7 @@ A **lightweight human-agent task coordination layer** — NOT a full PM tool. In
 
 ## Git History (Key Commits)
 ```
+383dca8 feat: invite token share links — hide team slug from share URLs
 c7261a8 revert: remove @mention from task/project descriptions — keep chat + comment
 811bf79 fix: task desc dropdown direction + exact-match mentions
 f446ef4 Replace MentionTextarea with inline @mention
