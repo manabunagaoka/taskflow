@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import crypto from "crypto";
 import { storage, logTaskChange } from "./storage";
 import { insertMemberSchema, insertProjectSchema, insertTaskSchema, insertTeamSchema, insertProjectFolderSchema } from "../shared/schema";
 import XLSX from "xlsx";
@@ -31,7 +32,8 @@ export async function registerRoutes(
       .replace(/^-|-$/g, "");
     const existing = await storage.getTeamBySlug(slug);
     if (existing) return res.status(409).json({ error: "Team slug already taken" });
-    const team = await storage.createTeam({ ...parsed.data, slug, passkey: req.body.passkey || null });
+    const inviteToken = crypto.randomUUID();
+    const team = await storage.createTeam({ ...parsed.data, slug, passkey: req.body.passkey || null, inviteToken });
     // Create founding member if provided
     // Auto-create Misc project
     await storage.createProject({ teamId: team.id, name: "Misc", color: "#6B7280" });
@@ -58,7 +60,7 @@ export async function registerRoutes(
     if (!team) return res.status(404).json({ error: "Team not found" });
     // Don't expose passkey, but tell client if one is required
     const { passkey, ...teamData } = team as any;
-    res.json({ ...teamData, hasPasskey: !!passkey });
+    res.json({ ...teamData, hasPasskey: !!passkey, inviteToken: team.inviteToken });
   });
 
   app.post("/api/teams/:slug/join", async (req, res) => {
@@ -69,6 +71,22 @@ export async function registerRoutes(
     }
     const { passkey, ...teamData } = team as any;
     res.json(teamData);
+  });
+
+  // Resolve invite token → team info
+  app.get("/api/join/:token", async (req, res) => {
+    const team = await storage.getTeamByInviteToken(req.params.token);
+    if (!team) return res.status(404).json({ error: "Invalid invite link" });
+    const { passkey, inviteToken, ...teamData } = team as any;
+    res.json({ ...teamData, hasPasskey: !!passkey });
+  });
+
+  // Regenerate invite token
+  app.post("/api/t/:teamSlug/regenerate-invite", resolveTeam, async (req, res) => {
+    const team = (req as any).team;
+    const newToken = crypto.randomUUID();
+    const updated = await storage.updateTeam(team.id, { inviteToken: newToken });
+    res.json({ inviteToken: (updated as any).inviteToken });
   });
 
   // Delete team (creator only)

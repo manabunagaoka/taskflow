@@ -8,6 +8,7 @@ export const teams = pgTable("teams", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   passkey: text("passkey"),
+  inviteToken: text("invite_token").unique(),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

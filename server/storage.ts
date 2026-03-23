@@ -15,6 +15,7 @@ import {
 export interface IStorage {
   // Teams
   getTeamBySlug(slug: string): Promise<Team | undefined>;
+  getTeamByInviteToken(token: string): Promise<Team | undefined>;
   createTeam(team: InsertTeam): Promise<Team>;
   updateTeam(id: number, data: Partial<InsertTeam>): Promise<Team | undefined>;
   getAllTeams(): Promise<Team[]>;
@@ -80,6 +81,10 @@ export class DatabaseStorage implements IStorage {
   // Teams
   async getTeamBySlug(slug: string): Promise<Team | undefined> {
     const [team] = await db.select().from(teams).where(eq(teams.slug, slug));
+    return team;
+  }
+  async getTeamByInviteToken(token: string): Promise<Team | undefined> {
+    const [team] = await db.select().from(teams).where(eq(teams.inviteToken, token));
     return team;
   }
   async createTeam(team: InsertTeam): Promise<Team> {

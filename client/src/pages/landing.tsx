@@ -19,6 +19,7 @@ export default function Landing() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+  const [createdInviteToken, setCreatedInviteToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Validation
@@ -32,9 +33,10 @@ export default function Landing() {
     setSlug(cleaned);
   }
 
-  const shareUrl = typeof window !== "undefined"
-    ? `${window.location.origin}${window.location.pathname}#/t/${createdSlug}`
-    : "";
+  const shareOrigin = typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? `${window.location.origin}${window.location.pathname}`
+    : "https://taskflow.manaboodle.com/";
+  const shareUrl = createdInviteToken ? `${shareOrigin}#/join/${createdInviteToken}` : `${shareOrigin}#/t/${createdSlug}`;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -59,6 +61,7 @@ export default function Landing() {
       }
       const team = await res.json();
       setCreatedSlug(team.slug);
+      setCreatedInviteToken(team.inviteToken || null);
     } catch {
       toast({ title: "Error", description: "Failed to create team", variant: "destructive" });
     } finally {

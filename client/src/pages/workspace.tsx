@@ -20,6 +20,7 @@ import {
   MessageSquare, RefreshCw, AlertTriangle, FolderOpen,
   LogOut, CheckCircle2, ArrowLeft, Filter, GripVertical,
   AlertCircle, Mail, KeyRound, Settings, ArrowUpDown, Repeat, Clock, CalendarDays,
+  Copy, Check, Link2, Share2,
 } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { UserSelector } from "@/components/user-selector";
@@ -106,6 +107,7 @@ export default function Workspace() {
   // Settings dialog
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const [inviteCopied, setInviteCopied] = useState(false);
 
   // Contact Admin form (inside settings)
   const [contactAdminOpen, setContactAdminOpen] = useState(false);
@@ -156,7 +158,7 @@ export default function Workspace() {
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: [`${apiBase}/projects`] });
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: [`${apiBase}/tasks`] });
   const { data: members = [] } = useQuery<Member[]>({ queryKey: [`${apiBase}/members`] });
-  const { data: teamInfo } = useQuery<{ id: number; createdBy: number | null; hasPasskey: boolean }>({
+  const { data: teamInfo } = useQuery<{ id: number; createdBy: number | null; hasPasskey: boolean; inviteToken?: string }>({
     queryKey: [`/api/teams/${teamSlug}`],
   });
 
@@ -383,6 +385,21 @@ export default function Workspace() {
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message || "Failed to rename", variant: "destructive" });
+    },
+  });
+
+  // Regenerate invite token
+  const regenerateInvite = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `${apiBase}/regenerate-invite`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamSlug}`] });
+      toast({ title: "Invite link regenerated", description: "The old invite link will no longer work." });
+    },
+    onError: () => {
+      toast({ title: "Failed to regenerate invite link", variant: "destructive" });
     },
   });
 
@@ -1580,6 +1597,40 @@ export default function Workspace() {
                 {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
               </Button>
             </div>
+
+            <div className="border-t" />
+
+            {/* Share / Invite Link */}
+            {teamInfo?.inviteToken && (() => {
+              const origin = typeof window !== "undefined" && window.location.hostname === "localhost"
+                ? `${window.location.origin}${window.location.pathname}`
+                : "https://taskflow.manaboodle.com/";
+              const inviteUrl = `${origin}#/join/${teamInfo.inviteToken}`;
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Share2 className="h-4 w-4" />
+                    <p className="text-sm font-medium">Invite Link</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Share this link to invite people to the team</p>
+                  <div className="flex gap-2">
+                    <Input value={inviteUrl} readOnly className="font-mono text-xs" />
+                    <Button variant="outline" size="icon" onClick={() => {
+                      navigator.clipboard.writeText(inviteUrl);
+                      setInviteCopied(true);
+                      toast({ title: "Invite link copied!" });
+                      setTimeout(() => setInviteCopied(false), 2000);
+                    }} title="Copy invite link">
+                      {inviteCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => regenerateInvite.mutate()} disabled={regenerateInvite.isPending}>
+                    <RefreshCw className={`h-3 w-3 mr-1 ${regenerateInvite.isPending ? "animate-spin" : ""}`} />
+                    Regenerate link
+                  </Button>
+                </div>
+              );
+            })()}
 
             <div className="border-t" />
 

@@ -1,5 +1,6 @@
 import express from "express";
 import type { Request, Response, NextFunction } from "express";
+import crypto from "crypto";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
@@ -17,6 +18,7 @@ const teams = pgTable("teams", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   passkey: text("passkey"),
+  inviteToken: text("invite_token").unique(),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -149,7 +151,8 @@ app.post("/api/teams", async (req, res) => {
   const slug = parsed.data.slug || parsed.data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const [existing] = await db.select().from(teams).where(eq(teams.slug, slug));
   if (existing) return res.status(409).json({ error: "Team slug already taken" });
-  const [team] = await db.insert(teams).values({ ...parsed.data, slug, passkey: req.body.passkey || null }).returning();
+  const inviteToken = crypto.randomUUID();
+  const [team] = await db.insert(teams).values({ ...parsed.data, slug, passkey: req.body.passkey || null, inviteToken }).returning();
   // Auto-create Misc project
   await db.insert(projects).values({ teamId: team.id, name: "Misc", color: "#6B7280" });
   if (req.body.founderName) {
@@ -173,7 +176,7 @@ app.get("/api/teams/:slug", async (req, res) => {
   const [team] = await db.select().from(teams).where(eq(teams.slug, req.params.slug));
   if (!team) return res.status(404).json({ error: "Team not found" });
   const { passkey, ...teamData } = team as any;
-  res.json({ ...teamData, hasPasskey: !!passkey });
+  res.json({ ...teamData, hasPasskey: !!passkey, inviteToken: team.inviteToken });
 });
 
 app.post("/api/teams/:slug/join", async (req, res) => {
@@ -184,6 +187,14 @@ app.post("/api/teams/:slug/join", async (req, res) => {
   }
   const { passkey, ...teamData } = team as any;
   res.json(teamData);
+});
+
+// Resolve invite token → team info
+app.get("/api/join/:token", async (req, res) => {
+  const [team] = await db.select().from(teams).where(eq(teams.inviteToken, req.params.token));
+  if (!team) return res.status(404).json({ error: "Invalid invite link" });
+  const { passkey, inviteToken, ...teamData } = team as any;
+  res.json({ ...teamData, hasPasskey: !!passkey });
 });
 
 // Delete team (creator only)
@@ -642,6 +653,14 @@ app.post(`${t}/import/excel`, resolveTeam, async (req, res) => {
   } catch (e: any) {
     res.status(400).json({ error: e.message });
   }
+});
+
+// ─── Regenerate invite token ───
+app.post(`${t}/regenerate-invite`, resolveTeam, async (req, res) => {
+  const team = (req as any).team;
+  const newToken = crypto.randomUUID();
+  const [updated] = await db.update(teams).set({ inviteToken: newToken }).where(eq(teams.id, team.id)).returning();
+  res.json({ inviteToken: updated.inviteToken });
 });
 
 // ─── Team Rename ───
