@@ -2,7 +2,7 @@
 **Last updated: March 23, 2026**
 **Latest commit: `383dca8` on `main`**
 **Deployed: Vercel (auto-deploy from GitHub)**
-**Live URL: taskflow-seven-smoky.vercel.app**
+**Live URL: taskflow-zeta-jet.vercel.app**
 
 ---
 
