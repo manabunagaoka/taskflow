@@ -46,9 +46,9 @@ function getInitials(name: string) {
 type ZoomLevel = "month" | "quarter" | "year";
 
 const ZOOM_CONFIG = {
-  month:   { pixelsPerDay: 40, padBefore: 14,  padAfter: 14,  label: "Month" },
-  quarter: { pixelsPerDay: 12, padBefore: 30,  padAfter: 30,  label: "Quarter" },
-  year:    { pixelsPerDay: 3,  padBefore: 90,  padAfter: 90,  label: "Year" },
+  month:   { pixelsPerDay: 40, windowDays: 90,   scrollDays: 30,  label: "Month" },
+  quarter: { pixelsPerDay: 12, windowDays: 365,  scrollDays: 90,  label: "Quarter" },
+  year:    { pixelsPerDay: 3,  windowDays: 1825, scrollDays: 365, label: "Year" },
 } as const;
 
 export default function Timeline() {
@@ -60,6 +60,7 @@ export default function Timeline() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [zoom, setZoom] = useState<ZoomLevel>("month");
+  const [viewOffset, setViewOffset] = useState(0); // days offset from today
 
   const zoomCfg = ZOOM_CONFIG[zoom];
   const PIXELS_PER_DAY = zoomCfg.pixelsPerDay;
@@ -85,44 +86,18 @@ export default function Timeline() {
 
   const today = useMemo(() => startOfDay(new Date()), []);
 
-  // Calculate date range with zoom-aware padding
+  // Calculate date range: fixed window centered on today + viewOffset
   const { minDate, maxDate, totalDays } = useMemo(() => {
-    const pad = zoomCfg.padBefore;
-    const padAfterDays = zoomCfg.padAfter;
-    if (datedTasks.length === 0) {
-      const min = addDays(today, -pad);
-      const max = addDays(today, padAfterDays);
-      return { minDate: min, maxDate: max, totalDays: differenceInDays(max, min) };
-    }
-    const dates = datedTasks.flatMap((t) => {
-      const d: Date[] = [];
-      if (t.startDate) d.push(startOfDay(parseISO(t.startDate)));
-      if (t.dueDate) d.push(startOfDay(parseISO(t.dueDate)));
-      if (d.length === 0) d.push(today);
-      return d;
-    });
-    const earliest = dates.reduce((a, b) => (a < b ? a : b));
-    const latest = dates.reduce((a, b) => (a > b ? a : b));
-    // Ensure minimum window sizes per zoom level
-    let min = addDays(earliest < today ? earliest : today, -pad);
-    let max = addDays(latest > today ? latest : today, padAfterDays);
-    if (zoom === "quarter") {
-      const minWindow = addMonths(today, -6);
-      const maxWindow = addMonths(today, 6);
-      if (min > minWindow) min = minWindow;
-      if (max < maxWindow) max = maxWindow;
-    } else if (zoom === "year") {
-      const minWindow = addYears(today, -2);
-      const maxWindow = addYears(today, 3);
-      if (min > minWindow) min = minWindow;
-      if (max < maxWindow) max = maxWindow;
-    }
+    const halfWindow = Math.floor(zoomCfg.windowDays / 2);
+    const center = addDays(today, viewOffset);
+    const min = addDays(center, -halfWindow);
+    const max = addDays(center, halfWindow);
     return {
       minDate: min,
       maxDate: max,
       totalDays: differenceInDays(max, min),
     };
-  }, [datedTasks, today, zoom, zoomCfg]);
+  }, [today, viewOffset, zoomCfg]);
 
   // Header labels — zoom-aware
   const headerLabels = useMemo(() => {
@@ -242,12 +217,19 @@ export default function Timeline() {
     }
   }, [todayPixelOffset, isMobile, projectRows.length, zoom]);
 
-  // Scroll by a screen-relative amount
+  // Reset offset when zoom changes
+  useEffect(() => {
+    setViewOffset(0);
+  }, [zoom]);
+
+  // Shift the view window by scrollDays
   const scrollTimeline = (direction: 1 | -1) => {
-    if (!scrollRef.current) return;
-    const container = scrollRef.current;
-    const scrollAmount = container.clientWidth * 0.75;
-    container.scrollBy({ left: direction * scrollAmount, behavior: "smooth" });
+    setViewOffset((prev) => prev + direction * zoomCfg.scrollDays);
+  };
+
+  // Jump back to today
+  const goToToday = () => {
+    setViewOffset(0);
   };
 
   const openTask = (task: Task) => {
@@ -391,10 +373,15 @@ export default function Timeline() {
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(-1)}>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(-1)} title="Scroll back">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(1)}>
+          {viewOffset !== 0 && (
+            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={goToToday}>
+              Today
+            </Button>
+          )}
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(1)} title="Scroll forward">
             <ChevronRight className="h-4 w-4" />
           </Button>
           <div className="w-px h-5 bg-border mx-1" />
