@@ -227,13 +227,13 @@ export default function Timeline() {
     return { thisWeek, nextWeek, later };
   }, [datedTasks, projects, today, isMobile]);
 
-  // Scroll to today on mount and view change
+  // Scroll to today on mount and view change — center today in viewport
   useEffect(() => {
     if (!isMobile && scrollRef.current) {
       const todayOffset = differenceInDays(today, minDate);
       if (todayOffset >= 0 && todayOffset <= totalDays) {
         const container = scrollRef.current;
-        const scrollTarget = todayOffset * PIXELS_PER_DAY - container.clientWidth / 3;
+        const scrollTarget = todayOffset * PIXELS_PER_DAY - container.clientWidth / 2;
         container.scrollLeft = Math.max(0, scrollTarget);
       } else {
         scrollRef.current.scrollLeft = 0;
@@ -241,12 +241,17 @@ export default function Timeline() {
     }
   }, [todayPixelOffset, isMobile, projectRows.length, zoom, viewAnchor, minDate, totalDays, PIXELS_PER_DAY, today]);
 
-  // Navigate: flip pages
+  // Navigate: flip pages (limit past to 1 year from today)
   const scrollTimeline = (direction: 1 | -1) => {
     setViewAnchor((prev) => {
-      if (zoom === "month") return addMonths(prev, direction);
-      if (zoom === "quarter") return addQuarters(prev, direction);
-      return addYears(prev, direction);
+      const oneYearAgo = addYears(today, -1);
+      let next: Date;
+      if (zoom === "month") next = addMonths(prev, direction);
+      else if (zoom === "quarter") next = addQuarters(prev, direction);
+      else next = addYears(prev, direction);
+      // Don't allow navigating more than 1 year into the past
+      if (isBefore(next, oneYearAgo)) return prev;
+      return next;
     });
   };
 
@@ -420,7 +425,7 @@ export default function Timeline() {
               size="sm"
               variant={zoom === level ? "default" : "outline"}
               className="h-7 px-2.5 text-xs"
-              onClick={() => { setZoom(level); setViewAnchor(startOfMonth(new Date())); }}
+              onClick={() => setZoom(level)}
             >
               {level === "month" ? "Month" : level === "quarter" ? "Quarter" : "Year"}
             </Button>
@@ -476,6 +481,7 @@ export default function Timeline() {
           <div
             className="flex-1 overflow-x-auto overflow-y-auto"
             ref={scrollRef}
+            style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y" }}
           >
             <div style={{ width: timelineWidth, minHeight: "100%" }} className="relative">
               {/* Primary header row (months / quarters / years) */}
