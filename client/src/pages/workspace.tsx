@@ -160,6 +160,26 @@ export default function Workspace() {
   const { data: projects = [] } = useQuery<Project[]>({ queryKey: [`${apiBase}/projects`] });
   const { data: tasks = [] } = useQuery<Task[]>({ queryKey: [`${apiBase}/tasks`] });
   const { data: members = [] } = useQuery<Member[]>({ queryKey: [`${apiBase}/members`] });
+
+  // Handle navigation from notification bell
+  useEffect(() => {
+    const openFromStorage = () => {
+      const taskIdStr = sessionStorage.getItem("openTaskId");
+      if (taskIdStr && tasks.length > 0) {
+        sessionStorage.removeItem("openTaskId");
+        const id = parseInt(taskIdStr);
+        const task = tasks.find((t) => t.id === id);
+        if (task) {
+          setSelectedProjectId(task.projectId);
+          setSelectedTaskId(id);
+          if (isMobile) setMobileView("details");
+        }
+      }
+    };
+    openFromStorage();
+    window.addEventListener("openTaskFromNotification", openFromStorage);
+    return () => window.removeEventListener("openTaskFromNotification", openFromStorage);
+  }, [tasks, isMobile]);
   const { data: teamInfo } = useQuery<{ id: number; createdBy: number | null; hasPasskey: boolean; inviteToken?: string }>({
     queryKey: [`/api/teams/${teamSlug}`],
   });

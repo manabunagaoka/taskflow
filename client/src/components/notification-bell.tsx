@@ -7,10 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatDistanceToNow } from "date-fns";
+import { useLocation } from "wouter";
 
 export function NotificationBell() {
-  const { apiBase } = useTeam();
+  const { apiBase, teamSlug } = useTeam();
   const { currentUser } = useCurrentUser();
+  const [, navigate] = useLocation();
+
+  const handleNotificationClick = (n: any) => {
+    if (n.taskId) {
+      sessionStorage.setItem("openTaskId", String(n.taskId));
+      navigate(`/t/${teamSlug}`);
+      window.dispatchEvent(new Event("openTaskFromNotification"));
+    }
+  };
 
   const { data: allNotifications = [] } = useQuery<any[]>({
     queryKey: [`${apiBase}/notifications/${currentUser}`],
@@ -80,7 +90,8 @@ export function NotificationBell() {
               {notifications.map((n: any) => (
                 <div
                   key={n.id}
-                  className="group w-full text-left px-4 py-2.5 hover:bg-accent transition-colors bg-primary/5"
+                  className={`group w-full text-left px-4 py-2.5 hover:bg-accent transition-colors bg-primary/5 ${n.taskId ? "cursor-pointer" : ""}`}
+                  onClick={() => handleNotificationClick(n)}
                 >
                   <div className="flex items-start gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 shrink-0" />
