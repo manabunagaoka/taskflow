@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTeam } from "@/lib/team-context";
 import { useCurrentUser } from "@/context/user-context";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   addDays,
   addMonths,
@@ -66,6 +67,9 @@ export default function Timeline() {
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [showOverdue, setShowOverdue] = useState(false);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [drawerWidth, setDrawerWidth] = useState(320);
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: [`${apiBase}/projects`],
@@ -150,6 +154,42 @@ export default function Timeline() {
     setViewMonth(startOfMonth(new Date()));
     setSelectedDay(today);
   };
+
+  // Month picker: year navigation
+  const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const selectPickerMonth = (monthIndex: number) => {
+    setViewMonth(new Date(pickerYear, monthIndex, 1));
+    setMonthPickerOpen(false);
+    setSelectedDay(null);
+  };
+
+  // Draggable divider handler
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidth: drawerWidth };
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = dragRef.current.startX - ev.clientX;
+      const newWidth = Math.min(600, Math.max(200, dragRef.current.startWidth + delta));
+      setDrawerWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      dragRef.current = null;
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, [drawerWidth]);
 
   const openTask = (task: Task) => {
     setSelectedTask(task);
@@ -284,12 +324,56 @@ export default function Timeline() {
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navigateMonth(-1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <button
-            className="text-xs font-medium min-w-[120px] text-center hover:text-primary transition-colors"
-            onClick={goToToday}
-          >
-            {monthLabel}
-          </button>
+          <Popover open={monthPickerOpen} onOpenChange={setMonthPickerOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className="text-xs font-medium min-w-[120px] text-center hover:text-primary transition-colors"
+              >
+                {monthLabel}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-3" align="center">
+              {/* Year nav */}
+              <div className="flex items-center justify-between mb-3">
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setPickerYear((y) => y - 1)}>
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
+                <span className="text-sm font-semibold">{pickerYear}</span>
+                <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setPickerYear((y) => y + 1)}>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              {/* Month grid */}
+              <div className="grid grid-cols-3 gap-1">
+                {monthNames.map((name, i) => {
+                  const isActive = viewMonth.getFullYear() === pickerYear && viewMonth.getMonth() === i;
+                  const isCurrent = today.getFullYear() === pickerYear && today.getMonth() === i;
+                  return (
+                    <button
+                      key={name}
+                      className={`
+                        text-xs py-1.5 rounded-md transition-colors
+                        ${isActive ? "bg-primary text-primary-foreground font-semibold" : "hover:bg-accent"}
+                        ${isCurrent && !isActive ? "font-semibold text-amber-600" : ""}
+                      `}
+                      onClick={() => selectPickerMonth(i)}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Today shortcut */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full mt-2 h-7 text-xs"
+                onClick={() => { goToToday(); setMonthPickerOpen(false); }}
+              >
+                Today
+              </Button>
+            </PopoverContent>
+          </Popover>
           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navigateMonth(1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
@@ -437,11 +521,22 @@ export default function Timeline() {
         {(selectedDay || showOverdue) && (
           <div
             className={`
-              border-t ${isMobile ? "" : "border-t-0 border-l"} bg-background
-              ${isMobile ? "h-[45vh] shrink-0" : "w-80 shrink-0"}
-              flex flex-col
+              border-t ${isMobile ? "" : "border-t-0"} bg-background
+              ${isMobile ? "h-[45vh] shrink-0" : "shrink-0"}
+              flex ${isMobile ? "flex-col" : "flex-row"}
             `}
+            style={isMobile ? undefined : { width: drawerWidth }}
           >
+            {/* Draggable divider (desktop only) */}
+            {!isMobile && (
+              <div
+                className="w-1.5 shrink-0 cursor-col-resize hover:bg-primary/20 active:bg-primary/30 transition-colors border-l flex items-center justify-center group"
+                onMouseDown={handleDragStart}
+              >
+                <div className="w-0.5 h-8 bg-border group-hover:bg-primary/40 rounded-full" />
+              </div>
+            )}
+            <div className="flex-1 flex flex-col min-w-0">
             {/* Drawer header */}
             <div className="h-10 border-b flex items-center justify-between px-3 shrink-0">
               <div className="flex items-center gap-2">
@@ -476,6 +571,7 @@ export default function Timeline() {
                 )}
               </div>
             </ScrollArea>
+            </div>
           </div>
         )}
       </div>
