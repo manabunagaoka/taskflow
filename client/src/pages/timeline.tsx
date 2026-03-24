@@ -525,17 +525,19 @@ export default function Timeline() {
                 />
               ))}
 
-              {/* Today line — centered in today's column */}
-              <div
-                className="absolute top-0 bottom-0 w-0.5 bg-amber-500 z-10"
-                style={{
-                  left: differenceInDays(today, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2,
-                }}
-              >
-                <div className="absolute -top-0 -left-2 px-1 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-b">
-                  Today
+              {/* Today line — only when today is in the visible period */}
+              {periodContainsToday && (
+                <div
+                  className="absolute top-0 bottom-0 w-0.5 bg-amber-500 z-10"
+                  style={{
+                    left: differenceInDays(today, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2,
+                  }}
+                >
+                  <div className="absolute -top-0 -left-2 px-1 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-b">
+                    Today
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Project rows */}
               {projectRows.map(({ project, tasks: projectTasks }) => (
@@ -563,8 +565,19 @@ export default function Timeline() {
                       !isDone && !isRecurring && task.dueDate && isBefore(taskEndDate, today);
                     const isHighPriority = task.priority === "high";
 
-                    const startOffset = differenceInDays(taskStartDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
-                    const endOffset = differenceInDays(taskEndDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
+                    // Skip tasks that don't overlap the visible period
+                    const hasOverlap = !isBefore(taskEndDate, minDate) && !isAfter(taskStartDate, maxDate);
+                    if (!hasOverlap) {
+                      return (
+                        <div key={task.id} className="h-9 border-b relative flex items-center" />
+                      );
+                    }
+
+                    // Clamp bar to visible period boundaries
+                    const rawStartOffset = differenceInDays(taskStartDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
+                    const rawEndOffset = differenceInDays(taskEndDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
+                    const startOffset = Math.max(0, rawStartOffset);
+                    const endOffset = Math.min(timelineWidth, rawEndOffset);
                     const barWidth = Math.max(endOffset - startOffset, PIXELS_PER_DAY / 2);
                     const barHeight = isHighPriority ? 10 : 7;
 
