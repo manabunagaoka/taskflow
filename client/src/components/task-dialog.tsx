@@ -198,6 +198,11 @@ export function TaskDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks/${task?.id}/activity`] });
+      // Also refresh notifications in case @mentions created new ones
+      queryClient.invalidateQueries({ predicate: (query) => {
+        const key = query.queryKey[0];
+        return typeof key === "string" && key.includes("/notifications/");
+      }});
       setComment("");
     },
   });

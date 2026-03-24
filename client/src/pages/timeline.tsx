@@ -86,36 +86,57 @@ export default function Timeline() {
   const today = useMemo(() => startOfDay(new Date()), []);
 
   // Build a map: dateKey -> tasks for that day
-  const tasksByDay = useMemo(() => {
+  // For recurring tasks, we don't pre-populate — we check dynamically per calendar day
+  const { tasksByDay, recurringTasksWithProject } = useMemo(() => {
     const map = new Map<string, (Task & { project?: Project })[]>();
+    const recurringList: (Task & { project?: Project })[] = [];
+
     for (const task of allTasks) {
       const proj = projects.find((p) => p.id === task.projectId);
       const taskWithProj = { ...task, project: proj };
       const isRecurring = task.recurring === "daily";
+
+      if (isRecurring) {
+        recurringList.push(taskWithProj);
+        continue;
+      }
+
       const start = task.startDate
         ? startOfDay(parseISO(task.startDate))
         : task.dueDate
           ? startOfDay(parseISO(task.dueDate))
           : today;
-      const end = isRecurring
-        ? addDays(today, 90) // show recurring up to 90 days out
-        : task.dueDate
-          ? startOfDay(parseISO(task.dueDate))
-          : start;
+      const end = task.dueDate
+        ? startOfDay(parseISO(task.dueDate))
+        : start;
 
       // Add task to each day in its range
-      const rangeStart = start;
-      const rangeEnd = end;
-      const days = Math.min(differenceInDays(rangeEnd, rangeStart) + 1, 365);
+      const days = Math.min(differenceInDays(end, start) + 1, 365);
       for (let i = 0; i < days; i++) {
-        const d = addDays(rangeStart, i);
+        const d = addDays(start, i);
         const key = format(d, "yyyy-MM-dd");
         if (!map.has(key)) map.set(key, []);
         map.get(key)!.push(taskWithProj);
       }
     }
-    return map;
+    return { tasksByDay: map, recurringTasksWithProject: recurringList };
   }, [allTasks, projects, today]);
+
+  // Get tasks for a given day (includes recurring tasks on any day from their start onward)
+  const getTasksForDay = useCallback((day: Date) => {
+    const key = format(day, "yyyy-MM-dd");
+    const nonRecurring = tasksByDay.get(key) || [];
+    // Add recurring tasks that have started by this day
+    const recurring = recurringTasksWithProject.filter((t) => {
+      const start = t.startDate
+        ? startOfDay(parseISO(t.startDate))
+        : t.dueDate
+          ? startOfDay(parseISO(t.dueDate))
+          : today;
+      return !isBefore(day, start);
+    });
+    return [...nonRecurring, ...recurring];
+  }, [tasksByDay, recurringTasksWithProject, today]);
 
   // Overdue tasks
   const overdueTasks = useMemo(() => {
@@ -129,12 +150,8 @@ export default function Timeline() {
       .map((t) => ({ ...t, project: projects.find((p) => p.id === t.projectId) }));
   }, [allTasks, projects, today]);
 
-  // Recurring tasks
-  const recurringTasks = useMemo(() => {
-    return allTasks
-      .filter((t) => t.recurring === "daily")
-      .map((t) => ({ ...t, project: projects.find((p) => p.id === t.projectId) }));
-  }, [allTasks, projects]);
+  // Recurring tasks (use the already-computed list)
+  const recurringTasks = recurringTasksWithProject;
 
   // Calendar grid: 6 weeks covering the view month
   const calendarDays = useMemo(() => {
@@ -222,9 +239,8 @@ export default function Timeline() {
   const selectedDayTasks = useMemo(() => {
     if (showOverdue) return overdueTasks;
     if (!selectedDay) return [];
-    const key = format(selectedDay, "yyyy-MM-dd");
-    return tasksByDay.get(key) || [];
-  }, [selectedDay, tasksByDay, showOverdue, overdueTasks]);
+    return getTasksForDay(selectedDay);
+  }, [selectedDay, getTasksForDay, showOverdue, overdueTasks]);
 
   const drawerTitle = showOverdue
     ? `${overdueTasks.length} Overdue`
@@ -399,7 +415,7 @@ export default function Timeline() {
           <div className="grid grid-cols-7 flex-1 gap-px bg-border/50 rounded-lg overflow-hidden">
             {calendarDays.map((day) => {
               const key = format(day, "yyyy-MM-dd");
-              const dayTasks = tasksByDay.get(key) || [];
+              const dayTasks = getTasksForDay(day);
               const intensity = getIntensity(dayTasks);
               const isToday = isSameDay(day, today);
               const inMonth = isCurrentMonth(day);
