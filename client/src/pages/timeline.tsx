@@ -45,6 +45,9 @@ function getInitials(name: string) {
 
 type ZoomLevel = "month" | "quarter" | "year";
 
+const MAX_PAST_DAYS = 730;   // 2 years back
+const MAX_FUTURE_DAYS = 1825; // 5 years forward
+
 const ZOOM_CONFIG = {
   month:   { pixelsPerDay: 40, windowDays: 90,   scrollDays: 30,  label: "Month" },
   quarter: { pixelsPerDay: 12, windowDays: 365,  scrollDays: 90,  label: "Quarter" },
@@ -222,9 +225,13 @@ export default function Timeline() {
     setViewOffset(0);
   }, [zoom]);
 
-  // Shift the view window by scrollDays
+  // Shift the view window by scrollDays, clamped to limits
   const scrollTimeline = (direction: 1 | -1) => {
-    setViewOffset((prev) => prev + direction * zoomCfg.scrollDays);
+    setViewOffset((prev) => {
+      const next = prev + direction * zoomCfg.scrollDays;
+      const halfWindow = Math.floor(zoomCfg.windowDays / 2);
+      return Math.max(-MAX_PAST_DAYS + halfWindow, Math.min(MAX_FUTURE_DAYS - halfWindow, next));
+    });
   };
 
   // Jump back to today
