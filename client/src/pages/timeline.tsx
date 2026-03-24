@@ -14,11 +14,18 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import {
   addDays,
   addMonths,
+  addQuarters,
   addYears,
   differenceInDays,
   format,
   startOfDay,
   startOfWeek,
+  startOfMonth,
+  startOfQuarter,
+  startOfYear,
+  endOfMonth,
+  endOfQuarter,
+  endOfYear,
   endOfWeek,
   addWeeks,
   isAfter,
@@ -45,14 +52,11 @@ function getInitials(name: string) {
 
 type ZoomLevel = "month" | "quarter" | "year";
 
-const MAX_PAST_DAYS = 3650;   // 10 years back
-const MAX_FUTURE_DAYS = 3650; // 10 years forward
-
-const ZOOM_CONFIG = {
-  month:   { pixelsPerDay: 40, windowDays: 90,   scrollDays: 30,  label: "Month" },
-  quarter: { pixelsPerDay: 12, windowDays: 365,  scrollDays: 90,  label: "Quarter" },
-  year:    { pixelsPerDay: 3,  windowDays: 1825, scrollDays: 365, label: "Year" },
-} as const;
+const ZOOM_PIXELS: Record<ZoomLevel, number> = {
+  month: 40,     // px per day — shows ~30 days
+  quarter: 14,   // px per day — shows ~90 days
+  year: 4,       // px per day — shows ~365 days
+};
 
 export default function Timeline() {
   const { teamSlug, teamName, apiBase } = useTeam();
@@ -63,10 +67,10 @@ export default function Timeline() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [zoom, setZoom] = useState<ZoomLevel>("month");
-  const [viewOffset, setViewOffset] = useState(0); // days offset from today
+  // viewAnchor = the start date of the current visible period
+  const [viewAnchor, setViewAnchor] = useState(() => startOfMonth(new Date()));
 
-  const zoomCfg = ZOOM_CONFIG[zoom];
-  const PIXELS_PER_DAY = zoomCfg.pixelsPerDay;
+  const PIXELS_PER_DAY = ZOOM_PIXELS[zoom];
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: [`${apiBase}/projects`],
@@ -89,18 +93,30 @@ export default function Timeline() {
 
   const today = useMemo(() => startOfDay(new Date()), []);
 
-  // Calculate date range: fixed window centered on today + viewOffset
-  const { minDate, maxDate, totalDays } = useMemo(() => {
-    const halfWindow = Math.floor(zoomCfg.windowDays / 2);
-    const center = addDays(today, viewOffset);
-    const min = addDays(center, -halfWindow);
-    const max = addDays(center, halfWindow);
+  // Calculate date range from viewAnchor + zoom level
+  const { minDate, maxDate, totalDays, periodLabel } = useMemo(() => {
+    let min: Date, max: Date, label: string;
+    if (zoom === "month") {
+      min = startOfMonth(viewAnchor);
+      max = endOfMonth(viewAnchor);
+      label = format(min, "MMMM yyyy");
+    } else if (zoom === "quarter") {
+      min = startOfQuarter(viewAnchor);
+      max = endOfQuarter(viewAnchor);
+      const q = Math.ceil((min.getMonth() + 1) / 3);
+      label = `Q${q} ${format(min, "yyyy")}`;
+    } else {
+      min = startOfYear(viewAnchor);
+      max = endOfYear(viewAnchor);
+      label = format(min, "yyyy");
+    }
     return {
       minDate: min,
       maxDate: max,
-      totalDays: differenceInDays(max, min),
+      totalDays: differenceInDays(max, min) + 1,
+      periodLabel: label,
     };
-  }, [today, viewOffset, zoomCfg]);
+  }, [viewAnchor, zoom]);
 
   // Header labels — zoom-aware
   const headerLabels = useMemo(() => {
@@ -211,33 +227,38 @@ export default function Timeline() {
     return { thisWeek, nextWeek, later };
   }, [datedTasks, projects, today, isMobile]);
 
-  // Scroll to today on mount and zoom change
+  // Scroll to today on mount and view change
   useEffect(() => {
     if (!isMobile && scrollRef.current) {
-      const container = scrollRef.current;
-      const scrollTarget = todayPixelOffset - container.clientWidth / 2;
-      container.scrollLeft = Math.max(0, scrollTarget);
+      const todayOffset = differenceInDays(today, minDate);
+      if (todayOffset >= 0 && todayOffset <= totalDays) {
+        const container = scrollRef.current;
+        const scrollTarget = todayOffset * PIXELS_PER_DAY - container.clientWidth / 3;
+        container.scrollLeft = Math.max(0, scrollTarget);
+      } else {
+        scrollRef.current.scrollLeft = 0;
+      }
     }
-  }, [todayPixelOffset, isMobile, projectRows.length, zoom]);
+  }, [todayPixelOffset, isMobile, projectRows.length, zoom, viewAnchor, minDate, totalDays, PIXELS_PER_DAY, today]);
 
-  // Reset offset when zoom changes
-  useEffect(() => {
-    setViewOffset(0);
-  }, [zoom]);
-
-  // Shift the view window by scrollDays, clamped to limits
+  // Navigate: flip pages
   const scrollTimeline = (direction: 1 | -1) => {
-    setViewOffset((prev) => {
-      const next = prev + direction * zoomCfg.scrollDays;
-      const halfWindow = Math.floor(zoomCfg.windowDays / 2);
-      return Math.max(-MAX_PAST_DAYS + halfWindow, Math.min(MAX_FUTURE_DAYS - halfWindow, next));
+    setViewAnchor((prev) => {
+      if (zoom === "month") return addMonths(prev, direction);
+      if (zoom === "quarter") return addQuarters(prev, direction);
+      return addYears(prev, direction);
     });
   };
 
   // Jump back to today
   const goToToday = () => {
-    setViewOffset(0);
+    setViewAnchor(startOfMonth(new Date()));
   };
+
+  // Check if current period contains today
+  const periodContainsToday = useMemo(() => {
+    return !isBefore(today, minDate) && !isAfter(today, maxDate);
+  }, [today, minDate, maxDate]);
 
   const openTask = (task: Task) => {
     setSelectedTask(task);
@@ -380,17 +401,18 @@ export default function Timeline() {
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(-1)} title="Scroll back">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(-1)} title="Previous">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          {viewOffset !== 0 && (
+          <span className="text-xs font-medium min-w-[100px] text-center">{periodLabel}</span>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(1)} title="Next">
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          {!periodContainsToday && (
             <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={goToToday}>
               Today
             </Button>
           )}
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(1)} title="Scroll forward">
-            <ChevronRight className="h-4 w-4" />
-          </Button>
           <div className="w-px h-5 bg-border mx-1" />
           {(["month", "quarter", "year"] as ZoomLevel[]).map((level) => (
             <Button
@@ -398,9 +420,9 @@ export default function Timeline() {
               size="sm"
               variant={zoom === level ? "default" : "outline"}
               className="h-7 px-2.5 text-xs"
-              onClick={() => setZoom(level)}
+              onClick={() => { setZoom(level); setViewAnchor(startOfMonth(new Date())); }}
             >
-              {ZOOM_CONFIG[level].label}
+              {level === "month" ? "Month" : level === "quarter" ? "Quarter" : "Year"}
             </Button>
           ))}
           <div className="w-px h-5 bg-border mx-1" />
