@@ -13,6 +13,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   addDays,
+  addMonths,
+  addYears,
   differenceInDays,
   format,
   startOfDay,
@@ -22,9 +24,11 @@ import {
   isAfter,
   isBefore,
   parseISO,
-  startOfMonth,
   eachMonthOfInterval,
+  eachQuarterOfInterval,
+  eachYearOfInterval,
   eachDayOfInterval,
+  eachWeekOfInterval,
   getDay,
 } from "date-fns";
 import {
@@ -37,7 +41,13 @@ function getInitials(name: string) {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
-const PIXELS_PER_DAY = 40;
+type ZoomLevel = "month" | "quarter" | "year";
+
+const ZOOM_CONFIG = {
+  month:   { pixelsPerDay: 40, padBefore: 14,  padAfter: 14,  label: "Month" },
+  quarter: { pixelsPerDay: 12, padBefore: 30,  padAfter: 30,  label: "Quarter" },
+  year:    { pixelsPerDay: 3,  padBefore: 90,  padAfter: 90,  label: "Year" },
+} as const;
 
 export default function Timeline() {
   const { teamSlug, teamName, apiBase } = useTeam();
@@ -47,6 +57,10 @@ export default function Timeline() {
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [zoom, setZoom] = useState<ZoomLevel>("month");
+
+  const zoomCfg = ZOOM_CONFIG[zoom];
+  const PIXELS_PER_DAY = zoomCfg.pixelsPerDay;
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: [`${apiBase}/projects`],
@@ -69,12 +83,14 @@ export default function Timeline() {
 
   const today = useMemo(() => startOfDay(new Date()), []);
 
-  // Calculate date range with 2-week padding
+  // Calculate date range with zoom-aware padding
   const { minDate, maxDate, totalDays } = useMemo(() => {
+    const pad = zoomCfg.padBefore;
+    const padAfterDays = zoomCfg.padAfter;
     if (datedTasks.length === 0) {
-      const min = addDays(today, -14);
-      const max = addDays(today, 14);
-      return { minDate: min, maxDate: max, totalDays: 28 };
+      const min = addDays(today, -pad);
+      const max = addDays(today, padAfterDays);
+      return { minDate: min, maxDate: max, totalDays: differenceInDays(max, min) };
     }
     const dates = datedTasks.flatMap((t) => {
       const d: Date[] = [];
@@ -85,43 +101,98 @@ export default function Timeline() {
     });
     const earliest = dates.reduce((a, b) => (a < b ? a : b));
     const latest = dates.reduce((a, b) => (a > b ? a : b));
-    const min = addDays(earliest < today ? earliest : today, -14);
-    const max = addDays(latest > today ? latest : today, 14);
+    // Ensure minimum window sizes per zoom level
+    let min = addDays(earliest < today ? earliest : today, -pad);
+    let max = addDays(latest > today ? latest : today, padAfterDays);
+    if (zoom === "quarter") {
+      const minWindow = addMonths(today, -6);
+      const maxWindow = addMonths(today, 6);
+      if (min > minWindow) min = minWindow;
+      if (max < maxWindow) max = maxWindow;
+    } else if (zoom === "year") {
+      const minWindow = addYears(today, -2);
+      const maxWindow = addYears(today, 3);
+      if (min > minWindow) min = minWindow;
+      if (max < maxWindow) max = maxWindow;
+    }
     return {
       minDate: min,
       maxDate: max,
       totalDays: differenceInDays(max, min),
     };
-  }, [datedTasks, today]);
+  }, [datedTasks, today, zoom, zoomCfg]);
 
-  // Month labels for header
-  const months = useMemo(
-    () =>
-      eachMonthOfInterval({ start: minDate, end: maxDate }).map((m) => ({
-        date: m,
-        label: format(m, "MMM yyyy"),
-        offset: Math.max(0, differenceInDays(m, minDate)),
-      })),
-    [minDate, maxDate]
-  );
+  // Header labels — zoom-aware
+  const headerLabels = useMemo(() => {
+    if (zoom === "month") {
+      return {
+        primary: eachMonthOfInterval({ start: minDate, end: maxDate }).map((m) => ({
+          label: format(m, "MMM yyyy"),
+          offset: Math.max(0, differenceInDays(m, minDate)),
+        })),
+        secondary: eachDayOfInterval({ start: minDate, end: maxDate }).map((d) => ({
+          label: format(d, "d"),
+          offset: differenceInDays(d, minDate),
+          width: PIXELS_PER_DAY,
+          isBold: getDay(d) === 1,
+          isToday: differenceInDays(d, today) === 0,
+        })),
+      };
+    } else if (zoom === "quarter") {
+      return {
+        primary: eachQuarterOfInterval({ start: minDate, end: maxDate }).map((q) => ({
+          label: `Q${Math.ceil((q.getMonth() + 1) / 3)} ${format(q, "yyyy")}`,
+          offset: Math.max(0, differenceInDays(q, minDate)),
+        })),
+        secondary: eachMonthOfInterval({ start: minDate, end: maxDate }).map((m) => ({
+          label: format(m, "MMM"),
+          offset: differenceInDays(m, minDate),
+          width: differenceInDays(addMonths(m, 1), m) * PIXELS_PER_DAY,
+          isBold: m.getMonth() % 3 === 0,
+          isToday: false,
+        })),
+      };
+    } else {
+      return {
+        primary: eachYearOfInterval({ start: minDate, end: maxDate }).map((y) => ({
+          label: format(y, "yyyy"),
+          offset: Math.max(0, differenceInDays(y, minDate)),
+        })),
+        secondary: eachQuarterOfInterval({ start: minDate, end: maxDate }).map((q) => ({
+          label: `Q${Math.ceil((q.getMonth() + 1) / 3)}`,
+          offset: differenceInDays(q, minDate),
+          width: differenceInDays(addMonths(q, 3), q) * PIXELS_PER_DAY,
+          isBold: q.getMonth() === 0,
+          isToday: false,
+        })),
+      };
+    }
+  }, [minDate, maxDate, today, zoom, PIXELS_PER_DAY]);
 
-  // Daily date ticks
-  const days = useMemo(
-    () =>
-      eachDayOfInterval({ start: minDate, end: maxDate }).map((d) => ({
-        date: d,
-        dayNum: format(d, "d"),
-        offset: differenceInDays(d, minDate),
-        isMonday: getDay(d) === 1,
-        isToday: differenceInDays(d, today) === 0,
-      })),
-    [minDate, maxDate, today]
-  );
+  // Gridlines — zoom-aware
+  const gridLines = useMemo(() => {
+    if (zoom === "month") {
+      return eachDayOfInterval({ start: minDate, end: maxDate }).map((d) => ({
+        offset: differenceInDays(d, minDate) * PIXELS_PER_DAY,
+        isMajor: getDay(d) === 1,
+      }));
+    } else if (zoom === "quarter") {
+      return eachWeekOfInterval({ start: minDate, end: maxDate }).map((w) => ({
+        offset: differenceInDays(w, minDate) * PIXELS_PER_DAY,
+        isMajor: w.getDate() <= 7,
+      }));
+    } else {
+      return eachMonthOfInterval({ start: minDate, end: maxDate }).map((m) => ({
+        offset: differenceInDays(m, minDate) * PIXELS_PER_DAY,
+        isMajor: m.getMonth() % 3 === 0,
+      }));
+    }
+  }, [minDate, maxDate, zoom, PIXELS_PER_DAY]);
 
   // Today position for auto-scroll (pixel-based)
   const todayPixelOffset = useMemo(
     () => differenceInDays(today, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2,
-    [today, minDate]
+    [today, minDate, PIXELS_PER_DAY]
   );
 
   // Group tasks by project — each task gets its own row
@@ -160,14 +231,14 @@ export default function Timeline() {
     return { thisWeek, nextWeek, later };
   }, [datedTasks, projects, today, isMobile]);
 
-  // Scroll to today on mount
+  // Scroll to today on mount and zoom change
   useEffect(() => {
     if (!isMobile && scrollRef.current) {
       const container = scrollRef.current;
       const scrollTarget = todayPixelOffset - container.clientWidth / 2;
       container.scrollLeft = Math.max(0, scrollTarget);
     }
-  }, [todayPixelOffset, isMobile, projectRows.length]);
+  }, [todayPixelOffset, isMobile, projectRows.length, zoom]);
 
   const openTask = (task: Task) => {
     setSelectedTask(task);
@@ -309,7 +380,19 @@ export default function Timeline() {
             {undatedCount} task{undatedCount !== 1 ? "s" : ""} have no dates set
           </span>
         )}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1">
+          {(["month", "quarter", "year"] as ZoomLevel[]).map((level) => (
+            <Button
+              key={level}
+              size="sm"
+              variant={zoom === level ? "default" : "outline"}
+              className="h-7 px-2.5 text-xs"
+              onClick={() => setZoom(level)}
+            >
+              {ZOOM_CONFIG[level].label}
+            </Button>
+          ))}
+          <div className="w-px h-5 bg-border mx-1" />
           <UserSelector />
           <NotificationBell />
         </div>
@@ -362,52 +445,48 @@ export default function Timeline() {
             ref={scrollRef}
           >
             <div style={{ width: timelineWidth, minHeight: "100%" }} className="relative">
-              {/* Month labels row */}
+              {/* Primary header row (months / quarters / years) */}
               <div className="h-6 border-b sticky top-0 bg-background z-20 relative">
-                {months.map((m, i) => (
+                {headerLabels.primary.map((m, i) => (
                   <div
                     key={i}
                     className="absolute top-0 h-full flex items-center px-2 text-[11px] font-medium text-muted-foreground border-l border-dashed"
-                    style={{
-                      left: m.offset * PIXELS_PER_DAY,
-                    }}
+                    style={{ left: m.offset * PIXELS_PER_DAY }}
                   >
                     {m.label}
                   </div>
                 ))}
               </div>
-              {/* Daily date labels row */}
+              {/* Secondary header row (days / months / quarters) */}
               <div className="h-6 border-b sticky top-6 bg-background z-20 relative">
-                {days.map((d, i) => (
+                {headerLabels.secondary.map((d, i) => (
                   <div
                     key={i}
                     className={`absolute top-0 h-full flex items-center justify-center text-[10px] ${
                       d.isToday
                         ? "font-bold text-amber-600"
-                        : d.isMonday
+                        : d.isBold
                         ? "font-semibold text-foreground"
                         : "text-muted-foreground"
                     }`}
                     style={{
                       left: d.offset * PIXELS_PER_DAY,
-                      width: PIXELS_PER_DAY,
+                      width: d.width,
                     }}
                   >
-                    {d.dayNum}
+                    {d.label}
                   </div>
                 ))}
               </div>
 
-              {/* Vertical day gridlines through data area */}
-              {days.map((d, i) => (
+              {/* Vertical gridlines */}
+              {gridLines.map((g, i) => (
                 <div
                   key={`grid-${i}`}
-                  className={`absolute w-px ${
-                    d.isMonday ? "bg-border" : "bg-border/40"
-                  }`}
+                  className={`absolute w-px ${g.isMajor ? "bg-border" : "bg-border/40"}`}
                   style={{
-                    left: d.offset * PIXELS_PER_DAY,
-                    top: 48, // below both header rows (6+6 = 12 tailwind units = 48px)
+                    left: g.offset,
+                    top: 48,
                     bottom: 0,
                   }}
                 />
