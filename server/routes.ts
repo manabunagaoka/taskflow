@@ -274,10 +274,11 @@ export async function registerRoutes(
     const oldTask = await storage.getTask(team.id, id);
     if (!oldTask) return res.status(404).json({ error: "Task not found" });
 
-    const updated = await storage.updateTask(team.id, id, req.body);
-    if (!updated) return res.status(404).json({ error: "Task not found" });
-
     const authorName = req.body.changedBy || "Someone";
+    // Strip non-column fields before passing to storage
+    const { changedBy, ...taskData } = req.body;
+    const updated = await storage.updateTask(team.id, id, taskData);
+    if (!updated) return res.status(404).json({ error: "Task not found" });
 
     if (req.body.status && req.body.status !== oldTask.status) {
       await logTaskChange(storage, team.id, id, authorName, `Status changed from "${oldTask.status}" to "${req.body.status}"`);

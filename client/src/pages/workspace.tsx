@@ -146,6 +146,8 @@ export default function Workspace() {
   // Local editing state
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
 
   const [comment, setComment] = useState("");
   const [showMentions, setShowMentions] = useState(false);
@@ -213,6 +215,8 @@ export default function Workspace() {
     prevTaskIdRef.current = selectedTask.id;
     setEditTitle(selectedTask.title);
     setEditDescription(selectedTask.description || "");
+    setEditStartDate(selectedTask.startDate || "");
+    setEditDueDate(selectedTask.dueDate || "");
   }
   if (!selectedTask && prevTaskIdRef.current !== null) {
     prevTaskIdRef.current = null;
@@ -336,9 +340,14 @@ export default function Workspace() {
       const res = await apiRequest("PATCH", `${apiBase}/tasks/${id}`, { ...body, changedBy: currentUser || "Someone" });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (updatedTask) => {
       queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks`] });
       if (selectedTaskId) queryClient.invalidateQueries({ queryKey: [`${apiBase}/tasks/${selectedTaskId}/activity`] });
+      // Sync local date state from server response
+      if (updatedTask && updatedTask.id === selectedTaskId) {
+        setEditStartDate(updatedTask.startDate || "");
+        setEditDueDate(updatedTask.dueDate || "");
+      }
     },
   });
 
@@ -566,7 +575,12 @@ export default function Workspace() {
   const selectTask = (id: number) => {
     setSelectedTaskId(id);
     const task = tasks.find(t => t.id === id);
-    if (task) { setEditTitle(task.title); setEditDescription(task.description || ""); }
+    if (task) {
+      setEditTitle(task.title);
+      setEditDescription(task.description || "");
+      setEditStartDate(task.startDate || "");
+      setEditDueDate(task.dueDate || "");
+    }
     if (isMobile) setMobileView("details");
   };
 
@@ -1048,8 +1062,11 @@ export default function Workspace() {
                 <Input
                   type="date"
                   className="mt-1 h-8 text-sm"
-                  value={selectedTask.startDate || ""}
-                  onChange={(e) => updateTask.mutate({ id: selectedTask.id, startDate: e.target.value || null })}
+                  value={editStartDate}
+                  onChange={(e) => {
+                    setEditStartDate(e.target.value);
+                    updateTask.mutate({ id: selectedTask.id, startDate: e.target.value || null });
+                  }}
                 />
               </div>
               <div>
@@ -1057,9 +1074,12 @@ export default function Workspace() {
                 <Input
                   type="date"
                   className={`mt-1 h-8 text-sm ${(selectedTask as any).recurring === "daily" ? "opacity-40 pointer-events-none" : ""}`}
-                  value={selectedTask.dueDate || ""}
+                  value={editDueDate}
                   disabled={(selectedTask as any).recurring === "daily"}
-                  onChange={(e) => updateTask.mutate({ id: selectedTask.id, dueDate: e.target.value || null })}
+                  onChange={(e) => {
+                    setEditDueDate(e.target.value);
+                    updateTask.mutate({ id: selectedTask.id, dueDate: e.target.value || null });
+                  }}
                 />
               </div>
               <div>
