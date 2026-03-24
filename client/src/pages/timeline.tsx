@@ -45,8 +45,8 @@ function getInitials(name: string) {
 
 type ZoomLevel = "month" | "quarter" | "year";
 
-const MAX_PAST_DAYS = 730;   // 2 years back
-const MAX_FUTURE_DAYS = 1825; // 5 years forward
+const MAX_PAST_DAYS = 3650;   // 10 years back
+const MAX_FUTURE_DAYS = 3650; // 10 years forward
 
 const ZOOM_CONFIG = {
   month:   { pixelsPerDay: 40, windowDays: 90,   scrollDays: 30,  label: "Month" },
