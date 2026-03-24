@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTeam } from "@/lib/team-context";
 import { useCurrentUser } from "@/context/user-context";
@@ -8,34 +8,25 @@ import { NotificationBell } from "@/components/notification-bell";
 import { UserSelector } from "@/components/user-selector";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
 import {
   addDays,
   addMonths,
-  addQuarters,
-  addYears,
   differenceInDays,
   format,
   startOfDay,
   startOfWeek,
   startOfMonth,
-  startOfQuarter,
-  startOfYear,
   endOfMonth,
-  endOfQuarter,
-  endOfYear,
   endOfWeek,
   addWeeks,
   isAfter,
   isBefore,
+  isSameDay,
   parseISO,
-  eachMonthOfInterval,
-  eachQuarterOfInterval,
-  eachYearOfInterval,
   eachDayOfInterval,
-  eachWeekOfInterval,
   getDay,
 } from "date-fns";
 import {
@@ -43,6 +34,8 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  AlertCircle,
+  X,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -50,27 +43,29 @@ function getInitials(name: string) {
   return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
-type ZoomLevel = "month" | "quarter" | "year";
+// Priority color helpers
+const PRIORITY_COLORS: Record<string, string> = {
+  high: "#ef4444",
+  medium: "#f59e0b",
+  low: "#22c55e",
+};
 
-const ZOOM_PIXELS: Record<ZoomLevel, number> = {
-  month: 40,     // px per day — shows ~30 days
-  quarter: 14,   // px per day — shows ~90 days
-  year: 4,       // px per day — shows ~365 days
+const PRIORITY_LABELS: Record<string, string> = {
+  high: "High",
+  medium: "Med",
+  low: "Low",
 };
 
 export default function Timeline() {
   const { teamSlug, teamName, apiBase } = useTeam();
   const { currentUser } = useCurrentUser();
   const isMobile = useIsMobile();
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [zoom, setZoom] = useState<ZoomLevel>("month");
-  // viewAnchor = the start date of the current visible period
-  const [viewAnchor, setViewAnchor] = useState(() => startOfMonth(new Date()));
-
-  const PIXELS_PER_DAY = ZOOM_PIXELS[zoom];
+  const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [showOverdue, setShowOverdue] = useState(false);
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: [`${apiBase}/projects`],
@@ -84,186 +79,77 @@ export default function Timeline() {
     queryKey: [`${apiBase}/members`],
   });
 
-  // All tasks appear on timeline — tasks without dates default to today
-  const datedTasks = useMemo(
-    () => allTasks,
-    [allTasks]
-  );
-  const undatedCount = allTasks.filter((t) => !t.startDate && !t.dueDate).length;
-
   const today = useMemo(() => startOfDay(new Date()), []);
 
-  // Calculate date range from viewAnchor + zoom level
-  const { minDate, maxDate, totalDays, periodLabel } = useMemo(() => {
-    let min: Date, max: Date, label: string;
-    if (zoom === "month") {
-      min = startOfMonth(viewAnchor);
-      max = endOfMonth(viewAnchor);
-      label = format(min, "MMMM yyyy");
-    } else if (zoom === "quarter") {
-      min = startOfQuarter(viewAnchor);
-      max = endOfQuarter(viewAnchor);
-      const q = Math.ceil((min.getMonth() + 1) / 3);
-      label = `Q${q} ${format(min, "yyyy")}`;
-    } else {
-      min = startOfYear(viewAnchor);
-      max = endOfYear(viewAnchor);
-      label = format(min, "yyyy");
-    }
-    return {
-      minDate: min,
-      maxDate: max,
-      totalDays: differenceInDays(max, min) + 1,
-      periodLabel: label,
-    };
-  }, [viewAnchor, zoom]);
+  // Build a map: dateKey -> tasks for that day
+  const tasksByDay = useMemo(() => {
+    const map = new Map<string, (Task & { project?: Project })[]>();
+    for (const task of allTasks) {
+      const proj = projects.find((p) => p.id === task.projectId);
+      const taskWithProj = { ...task, project: proj };
+      const isRecurring = task.recurring === "daily";
+      const start = task.startDate
+        ? startOfDay(parseISO(task.startDate))
+        : task.dueDate
+          ? startOfDay(parseISO(task.dueDate))
+          : today;
+      const end = isRecurring
+        ? addDays(today, 90) // show recurring up to 90 days out
+        : task.dueDate
+          ? startOfDay(parseISO(task.dueDate))
+          : start;
 
-  // Header labels — zoom-aware
-  const headerLabels = useMemo(() => {
-    if (zoom === "month") {
-      return {
-        primary: eachMonthOfInterval({ start: minDate, end: maxDate }).map((m) => ({
-          label: format(m, "MMM yyyy"),
-          offset: Math.max(0, differenceInDays(m, minDate)),
-        })),
-        secondary: eachDayOfInterval({ start: minDate, end: maxDate }).map((d) => ({
-          label: format(d, "d"),
-          offset: differenceInDays(d, minDate),
-          width: PIXELS_PER_DAY,
-          isBold: getDay(d) === 1,
-          isToday: differenceInDays(d, today) === 0,
-        })),
-      };
-    } else if (zoom === "quarter") {
-      return {
-        primary: eachQuarterOfInterval({ start: minDate, end: maxDate }).map((q) => ({
-          label: `Q${Math.ceil((q.getMonth() + 1) / 3)} ${format(q, "yyyy")}`,
-          offset: Math.max(0, differenceInDays(q, minDate)),
-        })),
-        secondary: eachMonthOfInterval({ start: minDate, end: maxDate }).map((m) => ({
-          label: format(m, "MMM"),
-          offset: differenceInDays(m, minDate),
-          width: differenceInDays(addMonths(m, 1), m) * PIXELS_PER_DAY,
-          isBold: m.getMonth() % 3 === 0,
-          isToday: false,
-        })),
-      };
-    } else {
-      return {
-        primary: eachYearOfInterval({ start: minDate, end: maxDate }).map((y) => ({
-          label: format(y, "yyyy"),
-          offset: Math.max(0, differenceInDays(y, minDate)),
-        })),
-        secondary: eachQuarterOfInterval({ start: minDate, end: maxDate }).map((q) => ({
-          label: `Q${Math.ceil((q.getMonth() + 1) / 3)}`,
-          offset: differenceInDays(q, minDate),
-          width: differenceInDays(addMonths(q, 3), q) * PIXELS_PER_DAY,
-          isBold: q.getMonth() === 0,
-          isToday: false,
-        })),
-      };
-    }
-  }, [minDate, maxDate, today, zoom, PIXELS_PER_DAY]);
-
-  // Gridlines — zoom-aware
-  const gridLines = useMemo(() => {
-    if (zoom === "month") {
-      return eachDayOfInterval({ start: minDate, end: maxDate }).map((d) => ({
-        offset: differenceInDays(d, minDate) * PIXELS_PER_DAY,
-        isMajor: getDay(d) === 1,
-      }));
-    } else if (zoom === "quarter") {
-      return eachWeekOfInterval({ start: minDate, end: maxDate }).map((w) => ({
-        offset: differenceInDays(w, minDate) * PIXELS_PER_DAY,
-        isMajor: w.getDate() <= 7,
-      }));
-    } else {
-      return eachMonthOfInterval({ start: minDate, end: maxDate }).map((m) => ({
-        offset: differenceInDays(m, minDate) * PIXELS_PER_DAY,
-        isMajor: m.getMonth() % 3 === 0,
-      }));
-    }
-  }, [minDate, maxDate, zoom, PIXELS_PER_DAY]);
-
-  // Today position for auto-scroll (pixel-based)
-  const todayPixelOffset = useMemo(
-    () => differenceInDays(today, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2,
-    [today, minDate, PIXELS_PER_DAY]
-  );
-
-  // Group tasks by project — each task gets its own row
-  const projectRows = useMemo(() => {
-    return projects
-      .filter((p) => datedTasks.some((t) => t.projectId === p.id))
-      .map((p) => ({
-        project: p,
-        tasks: datedTasks.filter((t) => t.projectId === p.id),
-      }));
-  }, [projects, datedTasks]);
-
-  // Mobile: group by week
-  const weekGroups = useMemo(() => {
-    if (!isMobile) return { thisWeek: [], nextWeek: [], later: [] };
-    const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-    const nextWeekEnd = endOfWeek(addWeeks(today, 1), { weekStartsOn: 1 });
-
-    const thisWeek: (Task & { project?: Project })[] = [];
-    const nextWeek: (Task & { project?: Project })[] = [];
-    const later: (Task & { project?: Project })[] = [];
-
-    for (const t of datedTasks) {
-      const d = parseISO(t.dueDate || t.startDate || today.toISOString());
-      const proj = projects.find((p) => p.id === t.projectId);
-      const taskWithProj = { ...t, project: proj };
-      if (isBefore(d, weekStart) || (!isAfter(d, weekEnd) && !isBefore(d, weekStart))) {
-        thisWeek.push(taskWithProj);
-      } else if (!isAfter(d, nextWeekEnd)) {
-        nextWeek.push(taskWithProj);
-      } else {
-        later.push(taskWithProj);
+      // Add task to each day in its range
+      const rangeStart = start;
+      const rangeEnd = end;
+      const days = Math.min(differenceInDays(rangeEnd, rangeStart) + 1, 365);
+      for (let i = 0; i < days; i++) {
+        const d = addDays(rangeStart, i);
+        const key = format(d, "yyyy-MM-dd");
+        if (!map.has(key)) map.set(key, []);
+        map.get(key)!.push(taskWithProj);
       }
     }
-    return { thisWeek, nextWeek, later };
-  }, [datedTasks, projects, today, isMobile]);
+    return map;
+  }, [allTasks, projects, today]);
 
-  // Scroll to today on mount and view change — center today in viewport
-  useEffect(() => {
-    if (!isMobile && scrollRef.current) {
-      const todayOffset = differenceInDays(today, minDate);
-      if (todayOffset >= 0 && todayOffset <= totalDays) {
-        const container = scrollRef.current;
-        const scrollTarget = todayOffset * PIXELS_PER_DAY - container.clientWidth / 2;
-        container.scrollLeft = Math.max(0, scrollTarget);
-      } else {
-        scrollRef.current.scrollLeft = 0;
-      }
-    }
-  }, [todayPixelOffset, isMobile, projectRows.length, zoom, viewAnchor, minDate, totalDays, PIXELS_PER_DAY, today]);
+  // Overdue tasks
+  const overdueTasks = useMemo(() => {
+    return allTasks
+      .filter((t) => {
+        if (t.status === "done") return false;
+        if (t.recurring === "daily") return false;
+        if (!t.dueDate) return false;
+        return isBefore(startOfDay(parseISO(t.dueDate)), today);
+      })
+      .map((t) => ({ ...t, project: projects.find((p) => p.id === t.projectId) }));
+  }, [allTasks, projects, today]);
 
-  // Navigate: flip pages (limit past to 1 year from today)
-  const scrollTimeline = (direction: 1 | -1) => {
-    setViewAnchor((prev) => {
-      const oneYearAgo = addYears(today, -1);
-      let next: Date;
-      if (zoom === "month") next = addMonths(prev, direction);
-      else if (zoom === "quarter") next = addQuarters(prev, direction);
-      else next = addYears(prev, direction);
-      // Don't allow navigating more than 1 year into the past
-      if (isBefore(next, oneYearAgo)) return prev;
-      return next;
-    });
+  // Recurring tasks
+  const recurringTasks = useMemo(() => {
+    return allTasks
+      .filter((t) => t.recurring === "daily")
+      .map((t) => ({ ...t, project: projects.find((p) => p.id === t.projectId) }));
+  }, [allTasks, projects]);
+
+  // Calendar grid: 6 weeks covering the view month
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(viewMonth);
+    const monthEnd = endOfMonth(viewMonth);
+    const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
+    const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+    return eachDayOfInterval({ start: gridStart, end: gridEnd });
+  }, [viewMonth]);
+
+  const navigateMonth = (direction: 1 | -1) => {
+    setViewMonth((prev) => addMonths(prev, direction));
+    setSelectedDay(null);
   };
 
-  // Jump back to today
   const goToToday = () => {
-    setViewAnchor(startOfMonth(new Date()));
+    setViewMonth(startOfMonth(new Date()));
+    setSelectedDay(today);
   };
-
-  // Check if current period contains today
-  const periodContainsToday = useMemo(() => {
-    return !isBefore(today, minDate) && !isAfter(today, maxDate);
-  }, [today, minDate, maxDate]);
 
   const openTask = (task: Task) => {
     setSelectedTask(task);
@@ -286,105 +172,99 @@ export default function Timeline() {
     return "Unassigned";
   };
 
-  // ── Mobile vertical list ──
-  if (isMobile) {
-    const renderGroup = (
-      label: string,
-      tasks: (Task & { project?: Project })[]
-    ) => {
-      if (tasks.length === 0) return null;
-      return (
-        <div className="mb-4">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-4 py-2">
-            {label}
-          </h3>
-          <div className="space-y-1">
-            {tasks.map((t) => {
-              const isOverdue =
-                t.status !== "done" && t.dueDate && isBefore(parseISO(t.dueDate), today);
-              const dateLabel = t.startDate && t.dueDate
-                ? `${format(parseISO(t.startDate), "MMM d")} – ${format(parseISO(t.dueDate), "MMM d")}`
-                : t.dueDate
-                  ? `Due ${format(parseISO(t.dueDate), "MMM d")}`
-                  : t.startDate
-                    ? `From ${format(parseISO(t.startDate), "MMM d")}`
-                    : "No dates set";
-              return (
-                <button
-                  key={t.id}
-                  className="w-full flex items-center gap-2 px-4 py-2 hover:bg-accent transition-colors text-left"
-                  onClick={() => openTask(t)}
-                >
-                  <div
-                    className="w-1 h-8 rounded-full shrink-0"
-                    style={{ backgroundColor: t.project?.color || "#888" }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={`text-sm font-medium truncate ${
-                        isOverdue ? "text-red-500" : ""
-                      }`}
-                    >
-                      {t.title}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      {dateLabel} —{" "}
-                      {getMemberName(t)}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      );
-    };
+  const getMemberInitials = (task: Task) => {
+    const name = getMemberName(task);
+    if (name === "Unassigned") return "?";
+    return getInitials(name);
+  };
+
+  // Get tasks for the selected day
+  const selectedDayTasks = useMemo(() => {
+    if (showOverdue) return overdueTasks;
+    if (!selectedDay) return [];
+    const key = format(selectedDay, "yyyy-MM-dd");
+    return tasksByDay.get(key) || [];
+  }, [selectedDay, tasksByDay, showOverdue, overdueTasks]);
+
+  const drawerTitle = showOverdue
+    ? `${overdueTasks.length} Overdue`
+    : selectedDay
+      ? format(selectedDay, "EEEE, MMMM d")
+      : "";
+
+  // Heatmap intensity: 0 = empty, 1 = light, 2 = medium, 3 = heavy
+  const getIntensity = (dayTasks: (Task & { project?: Project })[]) => {
+    if (dayTasks.length === 0) return 0;
+    const hasHigh = dayTasks.some((t) => t.priority === "high");
+    if (hasHigh || dayTasks.length >= 4) return 3;
+    if (dayTasks.length >= 2) return 2;
+    return 1;
+  };
+
+  const isCurrentMonth = (d: Date) => d.getMonth() === viewMonth.getMonth();
+
+  // ── Render ──
+  const monthLabel = format(viewMonth, "MMMM yyyy");
+  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  // Task card component used in the detail drawer
+  const TaskCard = ({ task }: { task: Task & { project?: Project } }) => {
+    const isRecurring = task.recurring === "daily";
+    const isOverdue =
+      !isRecurring && task.status !== "done" && task.dueDate && isBefore(parseISO(task.dueDate), today);
+    const isDone = task.status === "done";
+    const priority = task.priority || "medium";
 
     return (
-      <div className="flex flex-col h-screen bg-background">
-        <header className="h-12 border-b flex items-center px-4 gap-2 shrink-0">
-          <Link href={`/t/${teamSlug}`}>
-            <Button size="icon" variant="ghost" className="h-8 w-8">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Timeline</span>
-          <div className="ml-auto flex items-center gap-2">
-            <UserSelector />
-            <NotificationBell />
-          </div>
-        </header>
-        <ScrollArea className="flex-1">
-          <div className="py-2">
-            {undatedCount > 0 && (
-              <p className="text-xs text-muted-foreground px-4 py-2">
-                {undatedCount} task{undatedCount !== 1 ? "s" : ""} have no dates set
-              </p>
-            )}
-            {renderGroup("This Week", weekGroups.thisWeek)}
-            {renderGroup("Next Week", weekGroups.nextWeek)}
-            {renderGroup("Later", weekGroups.later)}
-            {datedTasks.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-12">
-                No tasks to display
-              </p>
-            )}
-          </div>
-        </ScrollArea>
-        <TaskDialog
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-          task={selectedTask}
-          members={members}
-          projects={projects}
+      <button
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left ${
+          isDone ? "opacity-50" : ""
+        } hover:bg-accent`}
+        onClick={() => openTask(task)}
+      >
+        {/* Project color bar */}
+        <div
+          className="w-1 h-10 rounded-full shrink-0"
+          style={{ backgroundColor: task.project?.color || "#888" }}
         />
-      </div>
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span
+              className={`text-sm font-medium truncate ${
+                isOverdue ? "text-red-500" : isDone ? "line-through text-muted-foreground" : ""
+              }`}
+            >
+              {task.title}
+            </span>
+            {isRecurring && <span className="text-xs">🔁</span>}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span
+              className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+              style={{
+                backgroundColor: PRIORITY_COLORS[priority] + "20",
+                color: PRIORITY_COLORS[priority],
+              }}
+            >
+              {PRIORITY_LABELS[priority] || "Med"}
+            </span>
+            {task.project && (
+              <span className="text-[10px] text-muted-foreground truncate">
+                {task.project.name}
+              </span>
+            )}
+          </div>
+        </div>
+        {/* Assignee avatar */}
+        <Avatar className="h-6 w-6 shrink-0">
+          <AvatarFallback className="text-[9px] bg-muted">
+            {getMemberInitials(task)}
+          </AvatarFallback>
+        </Avatar>
+      </button>
     );
-  }
-
-  // ── Desktop horizontal timeline ──
-  const timelineWidth = totalDays * PIXELS_PER_DAY;
+  };
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -396,239 +276,219 @@ export default function Timeline() {
           </Button>
         </Link>
         <CalendarDays className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-semibold">Timeline</span>
+        <span className="text-sm font-semibold">Calendar</span>
         {teamName && (
           <span className="text-xs text-muted-foreground">— {teamName}</span>
         )}
-        {undatedCount > 0 && (
-          <span className="text-xs text-muted-foreground ml-2">
-            {undatedCount} task{undatedCount !== 1 ? "s" : ""} have no dates set
-          </span>
-        )}
         <div className="ml-auto flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(-1)} title="Previous">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navigateMonth(-1)}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-xs font-medium min-w-[100px] text-center">{periodLabel}</span>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(1)} title="Next">
+          <button
+            className="text-xs font-medium min-w-[120px] text-center hover:text-primary transition-colors"
+            onClick={goToToday}
+          >
+            {monthLabel}
+          </button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => navigateMonth(1)}>
             <ChevronRight className="h-4 w-4" />
           </Button>
-          {!periodContainsToday && (
-            <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={goToToday}>
-              Today
-            </Button>
-          )}
-          <div className="w-px h-5 bg-border mx-1" />
-          {(["month", "quarter", "year"] as ZoomLevel[]).map((level) => (
-            <Button
-              key={level}
-              size="sm"
-              variant={zoom === level ? "default" : "outline"}
-              className="h-7 px-2.5 text-xs"
-              onClick={() => setZoom(level)}
-            >
-              {level === "month" ? "Month" : level === "quarter" ? "Quarter" : "Year"}
-            </Button>
-          ))}
           <div className="w-px h-5 bg-border mx-1" />
           <UserSelector />
           <NotificationBell />
         </div>
       </header>
 
-      {datedTasks.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-muted-foreground">
-            No tasks to display
-          </p>
-        </div>
-      ) : (
-        <div className="flex-1 flex overflow-hidden">
-          {/* Fixed project/task names column */}
-          <div className="w-48 shrink-0 border-r bg-background z-10">
-            {/* Header spacer: month row + day row */}
-            <div className="h-6 border-b" />
-            <div className="h-6 border-b" />
-            {projectRows.map(({ project, tasks: projectTasks }) => (
-              <div key={project.id}>
-                {/* Project header row */}
-                <div className="h-8 flex items-center gap-2 px-3 border-b bg-muted/30">
-                  <div
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: project.color }}
-                  />
-                  <span className="text-xs font-semibold truncate uppercase tracking-wide text-muted-foreground">
-                    {project.name}
-                  </span>
-                </div>
-                {/* One row per task */}
-                {projectTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="h-9 flex items-center px-3 pl-6 border-b cursor-pointer hover:bg-accent/50 transition-colors"
-                    onClick={() => openTask(task)}
-                  >
-                    <span className="text-xs truncate">
-                      {task.title}
-                    </span>
-                  </div>
-                ))}
+      <div className={`flex-1 flex ${isMobile ? "flex-col" : "flex-row"} overflow-hidden`}>
+        {/* ── Calendar Heatmap Grid ── */}
+        <div className={`${isMobile ? "shrink-0" : "flex-1"} flex flex-col p-3 ${isMobile ? "" : "p-6"}`}>
+          {/* Day of week headers */}
+          <div className="grid grid-cols-7 mb-1">
+            {dayNames.map((d) => (
+              <div key={d} className="text-center text-[10px] font-medium text-muted-foreground uppercase tracking-wider py-1">
+                {isMobile ? d[0] : d}
               </div>
             ))}
           </div>
 
-          {/* Scrollable timeline area */}
-          <div
-            className="flex-1 overflow-x-auto overflow-y-auto"
-            ref={scrollRef}
-            style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y" }}
-          >
-            <div style={{ width: timelineWidth, minHeight: "100%" }} className="relative">
-              {/* Primary header row (months / quarters / years) */}
-              <div className="h-6 border-b sticky top-0 bg-background z-20 relative">
-                {headerLabels.primary.map((m, i) => (
-                  <div
-                    key={i}
-                    className="absolute top-0 h-full flex items-center px-2 text-[11px] font-medium text-muted-foreground border-l border-dashed"
-                    style={{ left: m.offset * PIXELS_PER_DAY }}
-                  >
-                    {m.label}
-                  </div>
-                ))}
-              </div>
-              {/* Secondary header row (days / months / quarters) */}
-              <div className="h-6 border-b sticky top-6 bg-background z-20 relative">
-                {headerLabels.secondary.map((d, i) => (
-                  <div
-                    key={i}
-                    className={`absolute top-0 h-full flex items-center justify-center text-[10px] ${
-                      d.isToday
-                        ? "font-bold text-amber-600"
-                        : d.isBold
-                        ? "font-semibold text-foreground"
-                        : "text-muted-foreground"
-                    }`}
-                    style={{
-                      left: d.offset * PIXELS_PER_DAY,
-                      width: d.width,
-                    }}
-                  >
-                    {d.label}
-                  </div>
-                ))}
-              </div>
+          {/* Calendar grid */}
+          <div className="grid grid-cols-7 flex-1 gap-px bg-border/50 rounded-lg overflow-hidden">
+            {calendarDays.map((day) => {
+              const key = format(day, "yyyy-MM-dd");
+              const dayTasks = tasksByDay.get(key) || [];
+              const intensity = getIntensity(dayTasks);
+              const isToday = isSameDay(day, today);
+              const inMonth = isCurrentMonth(day);
+              const isSelected = selectedDay && isSameDay(day, selectedDay);
+              const hasOverdue = dayTasks.some(
+                (t) => t.status !== "done" && t.recurring !== "daily" && t.dueDate && isBefore(parseISO(t.dueDate), today)
+              );
+              const hasRecurring = dayTasks.some((t) => t.recurring === "daily");
 
-              {/* Vertical gridlines */}
-              {gridLines.map((g, i) => (
-                <div
-                  key={`grid-${i}`}
-                  className={`absolute w-px ${g.isMajor ? "bg-border" : "bg-border/40"}`}
-                  style={{
-                    left: g.offset,
-                    top: 48,
-                    bottom: 0,
-                  }}
-                />
-              ))}
+              // Collect unique project colors (max 4)
+              const projectColors = Array.from(new Set(dayTasks.map((t) => t.project?.color).filter((c): c is string => !!c))).slice(0, 4);
 
-              {/* Today line — only when today is in the visible period */}
-              {periodContainsToday && (
-                <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-amber-500 z-10"
-                  style={{
-                    left: differenceInDays(today, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2,
+              return (
+                <button
+                  key={key}
+                  className={`
+                    relative flex flex-col items-center justify-start bg-background transition-all
+                    ${isMobile ? "min-h-[48px] p-0.5" : "min-h-[72px] p-1.5"}
+                    ${!inMonth ? "opacity-30" : ""}
+                    ${isSelected ? "ring-2 ring-primary ring-inset" : ""}
+                    ${isToday ? "bg-amber-50 dark:bg-amber-950/30" : ""}
+                    hover:bg-accent/50
+                  `}
+                  onClick={() => {
+                    setShowOverdue(false);
+                    setSelectedDay(isSameDay(day, selectedDay!) ? null : day);
                   }}
                 >
-                  <div className="absolute -top-0 -left-2 px-1 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-b">
-                    Today
-                  </div>
-                </div>
-              )}
+                  {/* Day number */}
+                  <span
+                    className={`
+                      text-xs leading-none
+                      ${isToday ? "font-bold text-amber-600 bg-amber-500/20 rounded-full w-5 h-5 flex items-center justify-center" : ""}
+                      ${!isToday && inMonth ? "text-foreground" : ""}
+                    `}
+                  >
+                    {format(day, "d")}
+                  </span>
 
-              {/* Project rows */}
-              {projectRows.map(({ project, tasks: projectTasks }) => (
-                <div key={project.id}>
-                  {/* Project header row */}
-                  <div className="h-8 border-b bg-muted/30" />
-                  {/* Individual task rows */}
-                  {projectTasks.map((task) => {
-                    // Resolve start and end dates — every task is a bar
-                    const isRecurring = task.recurring === "daily";
-                    const taskStartDate = task.startDate
-                      ? startOfDay(parseISO(task.startDate))
-                      : task.dueDate
-                        ? startOfDay(parseISO(task.dueDate))
-                        : today;
-                    const taskEndDate = isRecurring
-                      ? maxDate
-                      : task.dueDate
-                        ? startOfDay(parseISO(task.dueDate))
-                        : task.startDate
-                          ? addDays(startOfDay(parseISO(task.startDate)), 1)
-                          : addDays(today, 1);
-                    const isDone = task.status === "done";
-                    const isOverdue =
-                      !isDone && !isRecurring && task.dueDate && isBefore(taskEndDate, today);
-                    const isHighPriority = task.priority === "high";
+                  {/* Intensity bar */}
+                  {intensity > 0 && !isMobile && (
+                    <div
+                      className="w-full mt-1 rounded-sm"
+                      style={{
+                        height: 3,
+                        backgroundColor:
+                          hasOverdue
+                            ? "#ef4444"
+                            : intensity === 3
+                              ? projectColors[0] || "#6366f1"
+                              : intensity === 2
+                                ? (projectColors[0] || "#6366f1") + "99"
+                                : (projectColors[0] || "#6366f1") + "44",
+                      }}
+                    />
+                  )}
 
-                    // Skip tasks that don't overlap the visible period
-                    const hasOverlap = !isBefore(taskEndDate, minDate) && !isAfter(taskStartDate, maxDate);
-                    if (!hasOverlap) {
-                      return (
-                        <div key={task.id} className="h-9 border-b relative flex items-center" />
-                      );
-                    }
+                  {/* Project dots */}
+                  {projectColors.length > 0 && (
+                    <div className={`flex gap-0.5 ${isMobile ? "mt-0.5" : "mt-1"}`}>
+                      {projectColors.map((color, i) => (
+                        <div
+                          key={i}
+                          className={`rounded-full ${isMobile ? "w-1 h-1" : "w-1.5 h-1.5"}`}
+                          style={{ backgroundColor: color }}
+                        />
+                      ))}
+                      {dayTasks.length > 4 && (
+                        <span className="text-[7px] text-muted-foreground leading-none">
+                          +{dayTasks.length - 4}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
-                    // Clamp bar to visible period boundaries
-                    const rawStartOffset = differenceInDays(taskStartDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
-                    const rawEndOffset = differenceInDays(taskEndDate, minDate) * PIXELS_PER_DAY + PIXELS_PER_DAY / 2;
-                    const startOffset = Math.max(0, rawStartOffset);
-                    const endOffset = Math.min(timelineWidth, rawEndOffset);
-                    const barWidth = Math.max(endOffset - startOffset, PIXELS_PER_DAY / 2);
-                    const barHeight = isHighPriority ? 10 : 7;
+                  {/* Recurring indicator (subtle stripe) */}
+                  {hasRecurring && !isMobile && (
+                    <div className="absolute bottom-0.5 right-0.5 text-[7px] text-muted-foreground">
+                      🔁
+                    </div>
+                  )}
 
-                    return (
-                      <div key={task.id} className="h-9 border-b relative flex items-center">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              className="absolute rounded-full transition-transform hover:scale-y-150 focus:outline-none focus:ring-2 focus:ring-ring"
-                              style={{
-                                left: startOffset,
-                                width: barWidth,
-                                height: barHeight,
-                                top: `calc(50% - ${barHeight / 2}px)`,
-                                backgroundColor: isOverdue
-                                  ? "transparent"
-                                  : isDone
-                                  ? `${project.color}66`
-                                  : project.color,
-                                border: isOverdue
-                                  ? `2px solid #ef4444`
-                                  : isDone
-                                  ? `1px solid ${project.color}`
-                                  : "none",
-                                borderStyle: isRecurring ? "dashed" : undefined,
-                              }}
-                              onClick={() => openTask(task)}
-                            />
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="text-xs max-w-xs">
-                            <p className="font-medium">{task.title}{isRecurring ? " 🔁" : ""}</p>
-                            <p className="text-muted-foreground">
-                              {format(taskStartDate, "MMM d")} – {isRecurring ? "Ongoing" : format(taskEndDate, "MMM d, yyyy")} —{" "}
-                              {getMemberName(task)}
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+                  {/* Overdue glow */}
+                  {hasOverdue && inMonth && (
+                    <div className="absolute inset-0 rounded-sm ring-1 ring-inset ring-red-400/40 pointer-events-none" />
+                  )}
+                </button>
+              );
+            })}
           </div>
+
+          {/* Recurring tasks strip — below calendar on desktop */}
+          {!isMobile && recurringTasks.length > 0 && (
+            <div className="mt-4 border rounded-lg p-3">
+              <h3 className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                Recurring Tasks
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {recurringTasks.map((t) => (
+                  <button
+                    key={t.id}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted/50 hover:bg-accent transition-colors text-xs"
+                    onClick={() => openTask(t)}
+                  >
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: t.project?.color || "#888" }}
+                    />
+                    <span className="font-medium">{t.title}</span>
+                    <span className="text-muted-foreground">🔁</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* ── Detail Drawer (right panel on desktop, bottom sheet on mobile) ── */}
+        {(selectedDay || showOverdue) && (
+          <div
+            className={`
+              border-t ${isMobile ? "" : "border-t-0 border-l"} bg-background
+              ${isMobile ? "h-[45vh] shrink-0" : "w-80 shrink-0"}
+              flex flex-col
+            `}
+          >
+            {/* Drawer header */}
+            <div className="h-10 border-b flex items-center justify-between px-3 shrink-0">
+              <div className="flex items-center gap-2">
+                {showOverdue && <AlertCircle className="h-3.5 w-3.5 text-red-500" />}
+                <span className={`text-xs font-semibold ${showOverdue ? "text-red-500" : ""}`}>
+                  {drawerTitle}
+                </span>
+                <Badge variant="secondary" className="text-[10px] h-4 px-1.5">
+                  {selectedDayTasks.length}
+                </Badge>
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-6 w-6"
+                onClick={() => { setSelectedDay(null); setShowOverdue(false); }}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            {/* Task list */}
+            <ScrollArea className="flex-1">
+              <div className="p-2 space-y-1">
+                {selectedDayTasks.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-8">
+                    No tasks on this day
+                  </p>
+                ) : (
+                  selectedDayTasks.map((task) => (
+                    <TaskCard key={task.id} task={task} />
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+      </div>
+
+      {/* ── Overdue FAB ── */}
+      {overdueTasks.length > 0 && !showOverdue && (
+        <button
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-full shadow-lg transition-all animate-pulse hover:animate-none"
+          onClick={() => { setShowOverdue(true); setSelectedDay(null); }}
+        >
+          <AlertCircle className="h-4 w-4" />
+          <span className="text-sm font-semibold">{overdueTasks.length} Overdue</span>
+        </button>
       )}
 
       <TaskDialog
