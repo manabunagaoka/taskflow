@@ -34,6 +34,8 @@ import {
 import {
   ArrowLeft,
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -240,6 +242,14 @@ export default function Timeline() {
     }
   }, [todayPixelOffset, isMobile, projectRows.length, zoom]);
 
+  // Scroll by a screen-relative amount
+  const scrollTimeline = (direction: 1 | -1) => {
+    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+    const scrollAmount = container.clientWidth * 0.75;
+    container.scrollBy({ left: direction * scrollAmount, behavior: "smooth" });
+  };
+
   const openTask = (task: Task) => {
     setSelectedTask(task);
     setDialogOpen(true);
@@ -381,6 +391,13 @@ export default function Timeline() {
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(-1)}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => scrollTimeline(1)}>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+          <div className="w-px h-5 bg-border mx-1" />
           {(["month", "quarter", "year"] as ZoomLevel[]).map((level) => (
             <Button
               key={level}
