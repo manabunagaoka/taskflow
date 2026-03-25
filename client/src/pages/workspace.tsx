@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useTeam } from "@/lib/team-context";
 import { useCurrentUser } from "@/context/user-context";
-import type { Task, Member, Project, ProjectFolder, Message } from "@shared/schema";
+import type { Task, Member, Project, ProjectFolder } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -126,11 +126,6 @@ export default function Workspace() {
   // Task filter
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
 
-  // Chat
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessage, setChatMessage] = useState("");
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean;
@@ -184,41 +179,7 @@ export default function Workspace() {
     queryKey: [`/api/teams/${teamSlug}`],
   });
 
-  // Chat messages with 3s polling
-  const { data: chatMessages = [] } = useQuery<Message[]>({
-    queryKey: [`${apiBase}/messages`],
-    refetchInterval: chatOpen ? 3000 : false,
-  });
 
-  // Chat mention notifications (badge on chat icon)
-  const { data: allNotifications = [] } = useQuery<any[]>({
-    queryKey: [`${apiBase}/notifications/${currentUser}`],
-    enabled: !!currentUser,
-    refetchInterval: 10000,
-  });
-  const unreadChatMentions = allNotifications.filter(
-    (n: any) => n.title === "You were mentioned in chat" && n.read === "false"
-  );
-
-  // Auto-mark chat mentions read only when chat transitions from closed → open
-  const prevChatOpen = useRef(false);
-  useEffect(() => {
-    if (chatOpen && !prevChatOpen.current && unreadChatMentions.length > 0) {
-      unreadChatMentions.forEach((n: any) => {
-        apiRequest("PATCH", `${apiBase}/notifications/${n.id}/read`).then(() => {
-          queryClient.invalidateQueries({ queryKey: [`${apiBase}/notifications/${currentUser}`] });
-        });
-      });
-    }
-    prevChatOpen.current = chatOpen;
-  }, [chatOpen]);
-
-  // Auto-scroll chat to bottom
-  useEffect(() => {
-    if (chatOpen && chatEndRef.current) {
-      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [chatMessages.length, chatOpen]);
 
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedTask = tasks.find((t) => t.id === selectedTaskId);
@@ -1296,20 +1257,11 @@ export default function Workspace() {
         <div className="flex items-center gap-2 ml-auto shrink-0">
           <UserSelector />
           <NotificationBell />
-          <Button
-            size="icon"
-            variant={chatOpen ? "default" : "ghost"}
-            onClick={() => setChatOpen(!chatOpen)}
-            aria-label="Team Chat"
-            className="relative"
-          >
-            <MessageSquare className="h-4 w-4" />
-            {unreadChatMentions.length > 0 && !chatOpen && (
-              <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center">
-                {unreadChatMentions.length > 9 ? "9+" : unreadChatMentions.length}
-              </span>
-            )}
-          </Button>
+          <Link href={`/t/${teamSlug}/chat`}>
+            <Button size="icon" variant="ghost" aria-label="Team Chat">
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+          </Link>
           <Link href={`/t/${teamSlug}/timeline`}>
             <Button size="icon" variant="ghost" aria-label="Timeline">
               <CalendarDays className="h-4 w-4" />
@@ -1820,160 +1772,6 @@ export default function Workspace() {
           </form>
         </DialogContent>
       </Dialog>
-
-      {/* ===== CHAT PANEL ===== */}
-      {chatOpen && (
-        <div className="fixed bottom-4 right-4 w-80 h-96 bg-background border rounded-lg shadow-xl flex flex-col z-50">
-          <div className="h-10 flex items-center justify-between px-3 border-b shrink-0">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <MessageSquare className="h-3.5 w-3.5" /> Team Chat
-            </span>
-            <div className="flex items-center gap-1">
-              {chatMessages.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-[10px] text-destructive hover:text-destructive px-1.5"
-                  onClick={() => {
-                    setConfirmDialog({
-                      open: true,
-                      title: "Clear all chats",
-                      description: "All chats will be gone forever. This cannot be undone.",
-                      confirmLabel: "Clear All",
-                      onConfirm: () => {
-                        apiRequest("DELETE", `${apiBase}/messages`).then(() => {
-                          queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
-                        });
-                      },
-                    });
-                  }}
-                >
-                  Clear All
-                </Button>
-              )}
-              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setChatOpen(false)}>
-                <span className="text-xs">✕</span>
-              </Button>
-            </div>
-          </div>
-          <ScrollArea className="flex-1 px-3 py-2">
-            <div className="space-y-3">
-              {chatMessages.map((msg) => {
-                const isMe = msg.authorName === currentUser;
-                const member = members.find(m => m.name === msg.authorName);
-                const isAgent = (member as any)?.type === "agent";
-                return (
-                  <div key={msg.id} className={`group flex gap-2 ${isMe ? "flex-row-reverse" : ""}`}>
-                    <Avatar className="h-6 w-6 shrink-0 mt-0.5">
-                      <AvatarFallback
-                        className="text-[8px] font-semibold text-white"
-                        style={{ backgroundColor: member?.color || "#888" }}
-                      >
-                        {isAgent ? "🤖" : getInitials(msg.authorName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className={`max-w-[75%] ${isMe ? "text-right" : ""}`}>
-                      <div className={`flex items-center gap-1.5 mb-0.5 ${isMe ? "justify-end" : ""}`}>
-                        <span className={`text-[10px] font-medium`}>
-                          {isAgent ? "🤖 " : ""}{msg.authorName}
-                        </span>
-                        <span className="text-[9px] text-muted-foreground">
-                          {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
-                        </span>
-                        {isMe && (
-                          <button
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => {
-                              setConfirmDialog({
-                                open: true,
-                                title: "Delete message",
-                                description: "This message will be permanently deleted.",
-                                confirmLabel: "Delete",
-                                onConfirm: () => {
-                                  apiRequest("DELETE", `${apiBase}/messages/${msg.id}`).then(() => {
-                                    queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
-                                  });
-                                },
-                              });
-                            }}
-                          >
-                            <Trash2 className="h-2.5 w-2.5 text-destructive" />
-                          </button>
-                        )}
-                      </div>
-                      <div className={`text-sm rounded-lg px-2.5 py-1.5 inline-block ${
-                        isMe
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted"
-                      }`}>
-                        {msg.content}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              <div ref={chatEndRef} />
-            </div>
-          </ScrollArea>
-          <div className="p-2 border-t relative">
-            {/* @mention autocomplete */}
-            {chatMessage.includes("@") && (() => {
-              const lastAt = chatMessage.lastIndexOf("@");
-              const afterAt = chatMessage.slice(lastAt + 1);
-              if (afterAt.includes(" ") && afterAt.split(" ").length > 2) return null;
-              const filtered = members.filter(m => m.name.toLowerCase().includes(afterAt.toLowerCase()));
-              if (filtered.length === 0) return null;
-              return (
-                <div className="absolute bottom-full left-2 right-2 mb-1 bg-popover border rounded-md shadow-md max-h-32 overflow-y-auto">
-                  {filtered.map(m => (
-                    <button
-                      key={m.id}
-                      className="flex items-center gap-2 px-2 py-1.5 w-full text-left text-sm hover:bg-accent"
-                      onClick={() => {
-                        const before = chatMessage.slice(0, lastAt);
-                        setChatMessage(`${before}@${m.name} `);
-                      }}
-                    >
-                      <Avatar className="h-4 w-4">
-                        <AvatarFallback className="text-[6px] font-semibold text-white" style={{ backgroundColor: m.color }}>
-                          {getInitials(m.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      {(m as any).type === "agent" ? "🤖 " : ""}{m.name}
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!chatMessage.trim() || !currentUser) return;
-                apiRequest("POST", `${apiBase}/messages`, {
-                  authorName: currentUser,
-                  content: chatMessage.trim(),
-                }).then(() => {
-                  setChatMessage("");
-                  queryClient.invalidateQueries({ queryKey: [`${apiBase}/messages`] });
-                });
-              }}
-              className="flex gap-1.5"
-            >
-              <Input
-                value={chatMessage}
-                onChange={(e) => setChatMessage(e.target.value)}
-                placeholder={currentUser ? "Type @ to mention..." : "Select a user first"}
-                disabled={!currentUser}
-                className="text-sm h-8 flex-1"
-                autoFocus
-              />
-              <Button type="submit" size="icon" className="h-8 w-8 shrink-0" disabled={!chatMessage.trim() || !currentUser}>
-                <Send className="h-3.5 w-3.5" />
-              </Button>
-            </form>
-          </div>
-        </div>
-      )}
 
       <ConfirmDialog
         open={confirmDialog.open}
