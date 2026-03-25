@@ -12,7 +12,7 @@ import Workspace from "@/pages/workspace";
 import Landing from "@/pages/landing";
 import Admin from "@/pages/admin";
 import Timeline from "@/pages/timeline";
-import ChatPage from "@/pages/chat";
+
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -39,15 +39,7 @@ function TeamTimeline() {
   );
 }
 
-function TeamChat() {
-  return (
-    <TeamProvider>
-      <UserProvider>
-        <ChatPage />
-      </UserProvider>
-    </TeamProvider>
-  );
-}
+
 
 function JoinByToken() {
   const params = useParams<{ token: string }>();
@@ -147,7 +139,7 @@ function App() {
               <Route path="/join/:token" component={JoinByToken} />
               <Route path="/admin/:key" component={Admin} />
               <Route path="/t/:teamSlug/timeline" component={TeamTimeline} />
-              <Route path="/t/:teamSlug/chat" component={TeamChat} />
+
               <Route path="/t/:teamSlug/*" component={TeamLayout} />
               <Route path="/t/:teamSlug" component={TeamLayout} />
               <Route component={NotFound} />

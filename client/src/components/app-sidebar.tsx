@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { Users, FolderKanban, Settings, ArrowLeftRight, Mail, CalendarDays, MessageSquare } from "lucide-react";
+import { Users, FolderKanban, Settings, ArrowLeftRight, Mail, CalendarDays } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -17,7 +17,6 @@ import { useTeam } from "@/lib/team-context";
 
 const navItems = [
   { title: "Projects", path: "", icon: FolderKanban },
-  { title: "Chat", path: "/chat", icon: MessageSquare },
   { title: "Timeline", path: "/timeline", icon: CalendarDays },
   { title: "Team", path: "/team", icon: Users },
   { title: "Settings", path: "/settings", icon: Settings },

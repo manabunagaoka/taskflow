@@ -30,6 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ChatPanel } from "@/components/chat-panel";
 import { formatDistanceToNow, isPast, isToday, parseISO, differenceInDays } from "date-fns";
 import { useLocation, Link } from "wouter";
 
@@ -125,6 +126,9 @@ export default function Workspace() {
 
   // Task filter
   const [taskFilter, setTaskFilter] = useState<TaskFilter>("all");
+
+  // Chat panel
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Confirm dialog state
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -1257,11 +1261,14 @@ export default function Workspace() {
         <div className="flex items-center gap-2 ml-auto shrink-0">
           <UserSelector />
           <NotificationBell />
-          <Link href={`/t/${teamSlug}/chat`}>
-            <Button size="icon" variant="ghost" aria-label="Team Chat">
-              <MessageSquare className="h-4 w-4" />
-            </Button>
-          </Link>
+          <Button
+            size="icon"
+            variant={chatOpen ? "default" : "ghost"}
+            onClick={() => setChatOpen(!chatOpen)}
+            aria-label="Team Chat"
+          >
+            <MessageSquare className="h-4 w-4" />
+          </Button>
           <Link href={`/t/${teamSlug}/timeline`}>
             <Button size="icon" variant="ghost" aria-label="Timeline">
               <CalendarDays className="h-4 w-4" />
@@ -1772,6 +1779,8 @@ export default function Workspace() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
 
       <ConfirmDialog
         open={confirmDialog.open}
